@@ -26,8 +26,8 @@ export const RECIPE_CATEGORIES_OPTIONS: { value: RecipeCategory; label: string }
 
 // These are placeholders. In a real build environment, you'd use process.env.
 // For client-side only, you might need to replace these directly or use a config file.
-export const SUPABASE_URL = process.env.SUPABASE_URL || "YOUR_SUPABASE_URL_PLACEHOLDER";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER";
+export const SUPABASE_URL = process.env.SUPABASE_URL || "https://wcwvulpiozkdtqnxhycv.supabase.co";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indjd3Z1bHBpb3prZHRxbnhoeWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MzI3NDUsImV4cCI6MjA2NDIwODc0NX0.dWVrM014v00CLFViq6NVTg_swpj5r8CT9aMuenSRNDw";
 
 export const LOCAL_STORAGE_KEYS = {
   AUTH: 'familyMealPlannerAuth',
