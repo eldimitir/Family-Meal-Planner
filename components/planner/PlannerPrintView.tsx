@@ -17,9 +17,9 @@ const PlannerPrintView: React.FC = () => {
   }, []);
 
   const getMealName = (meal: PlannedMeal): string => {
-    if (meal.customMealName) return meal.customMealName;
-    if (meal.recipeId) {
-      const recipe = getRecipeById(meal.recipeId);
+    if (meal.custom_meal_name) return meal.custom_meal_name;
+    if (meal.recipe_id) {
+      const recipe = getRecipeById(meal.recipe_id);
       return recipe ? recipe.title : 'Przepis usunięty';
     }
     return 'Niezdefiniowany posiłek';
@@ -28,7 +28,7 @@ const PlannerPrintView: React.FC = () => {
   // Determine the maximum number of meal types planned in any single day for table structure
   const maxMealSlots = Math.max(...DAYS_OF_WEEK.map(day => {
     const meals = weeklyPlan[day] || [];
-    const uniqueMealTypes = new Set(meals.map(m => m.mealType));
+    const uniqueMealTypes = new Set(meals.map(m => m.meal_type));
     return uniqueMealTypes.size;
   }), 0);
 
@@ -36,7 +36,7 @@ const PlannerPrintView: React.FC = () => {
   DAYS_OF_WEEK.forEach(day => {
     organizedPlan[day] = {};
     MEAL_TYPES.forEach(mealType => {
-      organizedPlan[day][mealType] = (weeklyPlan[day] || []).filter(m => m.mealType === mealType);
+      organizedPlan[day][mealType] = (weeklyPlan[day] || []).filter(m => m.meal_type === mealType);
     });
   });
 
@@ -85,4 +85,3 @@ const PlannerPrintView: React.FC = () => {
 };
 
 export default PlannerPrintView;
-    

@@ -1,7 +1,7 @@
-
 import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
+import { useData } from './contexts/DataContext'; // Import useData
 import LoginScreen from './components/auth/LoginScreen';
 import Navbar from './components/navigation/Navbar';
 import RecipeDashboard from './components/recipes/RecipeDashboard';
@@ -14,9 +14,31 @@ import ShoppingListPrintView from './components/shoppingList/ShoppingListPrintVi
 
 const ProtectedRoute: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { isLoadingRecipes, isLoadingPlanner, errorRecipes, errorPlanner } = useData(); // Get loading and error states
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  if (isLoadingRecipes || isLoadingPlanner) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-100">
+        <div className="text-xl font-semibold text-slate-700">Ładowanie danych...</div>
+      </div>
+    );
+  }
+
+  if (errorRecipes || errorPlanner) {
+     return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-4">
+        <div className="text-xl font-semibold text-red-700">Błąd ładowania danych</div>
+        <p className="text-red-600 mt-2">Nie udało się pobrać danych z serwera. Spróbuj odświeżyć stronę.</p>
+        {errorRecipes && <p className="text-xs text-red-500 mt-1">Błąd przepisów: {errorRecipes.message}</p>}
+        {errorPlanner && <p className="text-xs text-red-500 mt-1">Błąd planera: {errorPlanner.message}</p>}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
@@ -31,9 +53,10 @@ const ProtectedRoute: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading: authIsLoading } = useAuth();
 
-  if (isLoading) {
+
+  if (authIsLoading) { // Auth loading is now primary for initial screen
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-100">
         <div className="text-xl font-semibold text-slate-700">Ładowanie aplikacji...</div>
@@ -61,4 +84,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-    

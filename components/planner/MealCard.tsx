@@ -12,20 +12,20 @@ interface MealCardProps {
 
 const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
   const { getRecipeById, deletePlannedMeal } = useData();
-  const recipe = meal.recipeId ? getRecipeById(meal.recipeId) : null;
+  const recipe = meal.recipe_id ? getRecipeById(meal.recipe_id) : null;
 
   const handleDelete = () => {
     if (window.confirm(`Czy na pewno chcesz usunąć ten posiłek?`)) {
-      deletePlannedMeal(meal.id, meal.day);
+      deletePlannedMeal(meal.id);
     }
   };
 
   return (
     <div className="bg-white p-3 rounded-lg shadow hover:shadow-md transition-shadow border border-slate-200">
-      <h4 className="font-semibold text-sky-700 truncate" title={recipe?.title || meal.customMealName}>
-        {recipe?.title || meal.customMealName || 'Niezdefiniowany posiłek'}
+      <h4 className="font-semibold text-sky-700 truncate" title={recipe?.title || meal.custom_meal_name}>
+        {recipe?.title || meal.custom_meal_name || 'Niezdefiniowany posiłek'}
       </h4>
-      <p className="text-xs text-slate-500">{meal.mealType}</p>
+      <p className="text-xs text-slate-500">{meal.meal_type}</p>
       <p className="text-xs text-slate-500">Dla: {meal.servings} {meal.servings === 1 ? 'osoby' : 'osób'}</p>
       <div className="mt-2 flex justify-end space-x-1">
         <Button variant="ghost" size="sm" onClick={() => onEdit(meal)} className="p-1">
@@ -40,4 +40,3 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
 };
 
 export default MealCard;
-    

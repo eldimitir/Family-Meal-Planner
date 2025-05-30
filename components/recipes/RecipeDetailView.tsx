@@ -74,7 +74,7 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
           <h1 className="text-3xl md:text-4xl font-bold text-sky-700">{recipe.title}</h1>
           <div className="mt-2 text-sm text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
             <span><strong>Kategoria:</strong> {recipe.category}</span>
-            <span><strong>Czas przygotowania:</strong> {recipe.prepTime}</span>
+            <span><strong>Czas przygotowania:</strong> {recipe.prep_time}</span>
             {recipe.tags.length > 0 && (
               <span><strong>Tagi:</strong> {recipe.tags.join(', ')}</span>
             )}
@@ -117,4 +117,3 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
 };
 
 export default RecipeDetailView;
-    

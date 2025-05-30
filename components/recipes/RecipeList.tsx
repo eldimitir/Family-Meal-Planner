@@ -30,7 +30,12 @@ const RecipeList: React.FC<RecipeListProps> = ({ recipes, onEditRecipe }) => {
       const tagMatch = filterTag ? recipe.tags.includes(filterTag) : true;
       
       return (titleMatch || ingredientMatch) && categoryMatch && tagMatch;
-    }).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }).sort((a,b) => {
+      // Ensure created_at exists and is a valid date string before comparing
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
   }, [recipes, searchTerm, filterCategory, filterTag]);
 
   return (
@@ -74,4 +79,3 @@ const RecipeList: React.FC<RecipeListProps> = ({ recipes, onEditRecipe }) => {
 };
 
 export default RecipeList;
-    

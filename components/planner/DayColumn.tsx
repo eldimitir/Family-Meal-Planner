@@ -16,7 +16,7 @@ const DayColumn: React.FC<DayColumnProps> = ({ day, meals, onAddMeal, onEditMeal
   const sortedMeals = [...meals].sort((a, b) => {
     // Simple sort by meal type common order, can be improved
     const order = ["Śniadanie", "Drugie Śniadanie", "Obiad", "Podwieczorek", "Kolacja"];
-    return order.indexOf(a.mealType) - order.indexOf(b.mealType);
+    return order.indexOf(a.meal_type) - order.indexOf(b.meal_type);
   });
 
   return (
@@ -45,4 +45,3 @@ const DayColumn: React.FC<DayColumnProps> = ({ day, meals, onAddMeal, onEditMeal
 };
 
 export default DayColumn;
-    

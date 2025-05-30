@@ -1,8 +1,8 @@
-
 export interface Ingredient {
-  id: string;
+  id: string; // Will be UUID from Supabase
+  recipe_id?: string; // Foreign key to Recipe, added for clarity when handling ingredients separately
   name: string;
-  quantity: string; // Keep as string to allow "szczypta", "do smaku" etc.
+  quantity: string;
   unit: string;
 }
 
@@ -17,39 +17,38 @@ export enum RecipeCategory {
 }
 
 export interface Recipe {
-  id: string;
+  id: string; // UUID from Supabase
   title: string;
-  ingredients: Ingredient[];
-  instructions: string; // Step-by-step, could be markdown
-  prepTime: string; // e.g., "30 minut"
+  ingredients: Ingredient[]; // Will be populated by joining/fetching related ingredients
+  instructions: string;
+  prep_time: string; // Consider if this should be more structured, e.g., number in minutes
   category: RecipeCategory;
-  tags: string[]; // e.g., ["wegetariańskie", "szybkie"]
-  createdAt: string; // ISO date string
+  tags: string[]; // Stored as text[] in Supabase
+  created_at?: string; // ISO date string from Supabase
 }
 
 export interface PlannedMeal {
-  id: string;
-  day: string; // e.g., "Poniedziałek"
-  mealType: string; // e.g., "Śniadanie", "Obiad", "Kolacja"
-  recipeId: string | null; // ID of the recipe, or null if custom meal
-  customMealName?: string; // If no recipe is selected
-  servings: number; // 1 or 2 people
+  id: string; // UUID from Supabase
+  day: string;
+  meal_type: string;
+  recipe_id: string | null; // Foreign key to Recipe
+  custom_meal_name?: string;
+  servings: number;
+  created_at?: string; // ISO date string from Supabase
 }
 
 export interface WeeklyPlan {
-  [day: string]: PlannedMeal[]; // Key is day name e.g. "Poniedziałek"
+  [day: string]: PlannedMeal[];
 }
 
 export interface ShoppingListItem {
   id: string;
   name: string;
-  quantity: string; // Aggregated quantity
+  quantity: string;
   unit: string;
-  category?: RecipeCategory | string; // Optional: for grouping
+  category?: RecipeCategory | string;
   checked: boolean;
-  recipeSources: string[]; // Titles of recipes this ingredient is for
+  recipeSources: string[];
 }
 
 export type DayOfWeek = "Poniedziałek" | "Wtorek" | "Środa" | "Czwartek" | "Piątek" | "Sobota" | "Niedziela";
-
-    

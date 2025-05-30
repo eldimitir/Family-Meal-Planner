@@ -27,7 +27,7 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
       <div>
         <h3 className="text-xl font-semibold text-sky-700 mb-2 truncate" title={recipe.title}>{recipe.title}</h3>
         <p className="text-sm text-slate-500 mb-1">Kategoria: {recipe.category}</p>
-        <p className="text-sm text-slate-500 mb-3">Czas przygotowania: {recipe.prepTime}</p>
+        <p className="text-sm text-slate-500 mb-3">Czas przygotowania: {recipe.prep_time}</p>
         {recipe.tags.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1">
             {recipe.tags.slice(0, 3).map(tag => (
@@ -56,4 +56,3 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
 };
 
 export default RecipeItem;
-    

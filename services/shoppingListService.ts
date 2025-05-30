@@ -19,9 +19,9 @@ export const generateShoppingList = (weeklyPlan: WeeklyPlan, recipes: Recipe[]):
   const aggregatedIngredients: { [key: string]: ShoppingListItem } = {};
 
   Object.values(weeklyPlan).flat().forEach(plannedMeal => {
-    if (!plannedMeal.recipeId) return; // Skip custom meals
+    if (!plannedMeal.recipe_id) return; // Skip custom meals
 
-    const recipe = recipes.find(r => r.id === plannedMeal.recipeId);
+    const recipe = recipes.find(r => r.id === plannedMeal.recipe_id);
     if (!recipe) return; // Skip if recipe not found
 
     const servingsMultiplier = plannedMeal.servings; // Assuming base recipe is for 1 person or ingredients are per person
@@ -66,4 +66,3 @@ export const generateShoppingList = (weeklyPlan: WeeklyPlan, recipes: Recipe[]):
   
   return groupedAndSortedList;
 };
-    

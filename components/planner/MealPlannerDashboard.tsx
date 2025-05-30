@@ -10,7 +10,7 @@ import { DAYS_OF_WEEK } from '../../constants';
 import { PrintIcon, TrashIcon } from '../../constants.tsx';
 
 const MealPlannerDashboard: React.FC = () => {
-  const { weeklyPlan, clearWeeklyPlan } = useData();
+  const { weeklyPlan, clearWeeklyPlan, getRecipeById } = useData(); // Added getRecipeById
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | null>(null);
   const [mealToEdit, setMealToEdit] = useState<PlannedMeal | undefined>(undefined);
@@ -90,7 +90,7 @@ const MealPlannerDashboard: React.FC = () => {
               if (mealsForDay.length === 0) return null;
               return (
                 <li key={day}>
-                  <strong className="text-slate-600">{day}:</strong> {mealsForDay.map(m => m.customMealName || useData().getRecipeById(m.recipeId || '')?.title || 'Posiłek').join(', ')}
+                  <strong className="text-slate-600">{day}:</strong> {mealsForDay.map(m => m.custom_meal_name || getRecipeById(m.recipe_id || '')?.title || 'Posiłek').join(', ')}
                 </li>
               );
             })}
@@ -103,4 +103,3 @@ const MealPlannerDashboard: React.FC = () => {
 };
 
 export default MealPlannerDashboard;
-    
