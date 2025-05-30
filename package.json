@@ -9,10 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "19.0.0-rc.0",
-    "react-router-dom": "6.25.1",
-    "react": "19.0.0-rc.0",
-    "react/jsx-runtime": "19.0.0-rc.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.1",
+    "react": "^19.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

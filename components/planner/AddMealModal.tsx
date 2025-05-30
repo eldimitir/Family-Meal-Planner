@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { PlannedMeal, Recipe, DayOfWeek } from '../../types';
 import { useData } from '../../contexts/DataContext';
@@ -15,7 +16,7 @@ interface AddMealModalProps {
 }
 
 const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealToEdit }) => {
-  const { recipes, addPlannedMeal, updatePlannedMeal, isSavingData } = useData();
+  const { recipes, addPlannedMeal, updatePlannedMeal } = useData();
   const [mealType, setMealType] = useState<string>(MEAL_TYPES[0]);
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [customMealName, setCustomMealName] = useState<string>('');
@@ -23,27 +24,25 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
   const [isCustomMeal, setIsCustomMeal] = useState<boolean>(false);
 
   useEffect(() => {
-    if (isOpen) { // Only reset/initialize when modal becomes open
-        if (mealToEdit) {
-            setMealType(mealToEdit.mealType);
-            setRecipeId(mealToEdit.recipeId);
-            setCustomMealName(mealToEdit.customMealName || '');
-            setServings(mealToEdit.servings);
-            setIsCustomMeal(!!mealToEdit.customMealName && !mealToEdit.recipeId);
-        } else {
-            // Reset form for new meal
-            setMealType(MEAL_TYPES[0]);
-            setRecipeId(recipes.length > 0 ? recipes[0].id : null);
-            setCustomMealName('');
-            setServings(1);
-            setIsCustomMeal(false);
-        }
+    if (mealToEdit) {
+      setMealType(mealToEdit.mealType);
+      setRecipeId(mealToEdit.recipeId);
+      setCustomMealName(mealToEdit.customMealName || '');
+      setServings(mealToEdit.servings);
+      setIsCustomMeal(!!mealToEdit.customMealName && !mealToEdit.recipeId);
+    } else {
+      // Reset form for new meal
+      setMealType(MEAL_TYPES[0]);
+      setRecipeId(recipes.length > 0 ? recipes[0].id : null);
+      setCustomMealName('');
+      setServings(1);
+      setIsCustomMeal(false);
     }
-  }, [mealToEdit, recipes, isOpen, day]); // re-initialize on open or if relevant props change
+  }, [mealToEdit, recipes, isOpen]); // re-initialize on open
 
   const recipeOptions = recipes.map(r => ({ value: r.id, label: r.title }));
   
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const mealData = {
       day,
@@ -53,20 +52,12 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
       servings,
     };
 
-    try {
-        if (mealToEdit) {
-            await updatePlannedMeal({ ...mealData, id: mealToEdit.id });
-        } else {
-            const added = await addPlannedMeal(mealData);
-            if (!added) {
-                console.error("Failed to add planned meal, operation returned null");
-                return; // Prevent closing if add failed
-            }
-        }
-        onClose();
-    } catch (error) {
-        console.error("Error during planned meal save operation:", error);
+    if (mealToEdit) {
+      updatePlannedMeal({ ...mealData, id: mealToEdit.id });
+    } else {
+      addPlannedMeal(mealData);
     }
+    onClose();
   };
   
   const handleRecipeChange = (selectedRecipeId: string) => {
@@ -77,9 +68,6 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
     }
   }
 
-  const isSubmitDisabled = isSavingData || (!isCustomMeal && !recipeId && recipes.length > 0);
-
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`${mealToEdit ? 'Edytuj' : 'Dodaj'} posiłek na ${day}`}>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -89,7 +77,6 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
           value={mealType}
           onChange={(e) => setMealType(e.target.value)}
           required
-          disabled={isSavingData}
         />
 
         <div className="flex items-center space-x-2">
@@ -102,7 +89,6 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
               if (e.target.checked) setRecipeId(null); // Clear recipe if custom
             }}
             className="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"
-            disabled={isSavingData}
           />
           <label htmlFor="isCustomMeal" className="text-sm text-slate-700">Posiłek niestandardowy (bez przepisu)</label>
         </div>
@@ -113,7 +99,6 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
             value={customMealName}
             onChange={(e) => setCustomMealName(e.target.value)}
             required={isCustomMeal}
-            disabled={isSavingData}
           />
         ) : (
           <Select
@@ -122,7 +107,7 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
             value={recipeId || ''}
             onChange={(e) => handleRecipeChange(e.target.value)}
             placeholder="Wybierz przepis..."
-            disabled={isCustomMeal || recipes.length === 0 || isSavingData}
+            disabled={isCustomMeal || recipes.length === 0}
             required={!isCustomMeal}
           />
         )}
@@ -136,11 +121,10 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
           value={servings}
           onChange={(e) => setServings(parseInt(e.target.value, 10))}
           required
-          disabled={isSavingData}
         />
         <div className="flex justify-end space-x-3 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose} disabled={isSavingData}>Anuluj</Button>
-          <Button type="submit" variant="primary" isLoading={isSavingData} disabled={isSubmitDisabled}>
+          <Button type="button" variant="secondary" onClick={onClose}>Anuluj</Button>
+          <Button type="submit" variant="primary" disabled={!isCustomMeal && !recipeId && recipes.length > 0}>
             {mealToEdit ? 'Zapisz zmiany' : 'Dodaj posiłek'}
           </Button>
         </div>
@@ -150,3 +134,4 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
 };
 
 export default AddMealModal;
+    
