@@ -24,18 +24,12 @@ export const RECIPE_CATEGORIES_OPTIONS: { value: RecipeCategory; label: string }
   { value: RecipeCategory.INNE, label: "Inne" },
 ];
 
+// These are placeholders. In a real build environment, you'd use process.env.
+// For client-side only, you might need to replace these directly or use a config file.
+export const SUPABASE_URL = process.env.SUPABASE_URL || "https://wcwvulpiozkdtqnxhycv.supabase.co";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indjd3Z1bHBpb3prZHRxbnhoeWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MzI3NDUsImV4cCI6MjA2NDIwODc0NX0.dWVrM014v00CLFViq6NVTg_swpj5r8CT9aMuenSRNDw";
+
 export const LOCAL_STORAGE_KEYS = {
   AUTH: 'familyMealPlannerAuth',
+  // Add other keys as needed, e.g., for user preferences if they were stored locally
 };
-
-export const GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17';
-
-// NocoDB Configuration
-export const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://app.nocodb.com';
-export const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || '8fF68FTCqkww_1KO1fLvtJAo8AfnBEWJ5H-Ob8I4';
-export const NOCODB_PROJECT_ID = process.env.NOCODB_PROJECT_ID || 'ph2arub6g8qagko';
-
-// NocoDB Table Names (adjust to your NocoDB project)
-export const NOCODB_RECIPES_TABLE = 'Recipes';
-export const NOCODB_INGREDIENTS_TABLE = 'Ingredients';
-export const NOCODB_PLANNED_MEALS_TABLE = 'PlannedMeals';

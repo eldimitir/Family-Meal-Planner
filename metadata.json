@@ -1,6 +1,6 @@
+
 {
-  "name": "Rodzinny Planer Posiłków [NocoDB]",
-  "description": "Aplikacja webowa do planowania posiłków rodzinnych, zarządzania przepisami i tworzenia list zakupów. Dane przechowywane lokalnie w przeglądarce.",
-  "requestFramePermissions": [],
-  "prompt": ""
+  "name": "Rodzinny Planer Posiłków",
+  "description": "Aplikacja webowa do planowania posiłków rodzinnych, zarządzania przepisami i tworzenia list zakupów. Dane przechowywane lokalnie w przeglądarce."
 }
+    
