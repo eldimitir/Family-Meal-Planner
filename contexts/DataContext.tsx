@@ -1,17 +1,16 @@
 import React, { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Recipe, WeeklyPlan, PlannedMeal, Ingredient, DayOfWeek } from '../types';
-import { DAYS_OF_WEEK, SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
-
-// Ensure environment variables are non-empty or provide clear instructions.
-if (!SUPABASE_URL || SUPABASE_URL === "YOUR_SUPABASE_URL_PLACEHOLDER") {
-  console.error("Supabase URL is not configured. Please set process.env.SUPABASE_URL or update constants.ts");
-}
-if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY === "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER") {
-  console.error("SupABASE ANON KEY is not configured. Please set process.env.SUPABASE_ANON_KEY or update constants.ts");
-}
-
-const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+import { Recipe, WeeklyPlan, PlannedMeal, Ingredient, DayOfWeek, AISuggestedRecipe, RecipeCategory } from '../types';
+import { 
+  DAYS_OF_WEEK, 
+  GEMINI_MODEL_NAME,
+  NOCODB_BASE_URL,
+  NOCODB_API_TOKEN,
+  NOCODB_PROJECT_ID,
+  NOCODB_RECIPES_TABLE,
+  NOCODB_INGREDIENTS_TABLE,
+  NOCODB_PLANNED_MEALS_TABLE
+} from '../constants';
+import { GoogleGenAI, GenerateContentResponse } from '@google/genai';
 
 interface DataContextType {
   recipes: Recipe[];
@@ -30,6 +29,7 @@ interface DataContextType {
   clearWeeklyPlan: () => Promise<void>;
   refreshRecipes: () => Promise<void>;
   refreshPlanner: () => Promise<void>;
+  getAIRecipeSuggestion: (userPrompt: string) => Promise<AISuggestedRecipe | null>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -39,6 +39,66 @@ const initialWeeklyPlan: WeeklyPlan = DAYS_OF_WEEK.reduce((acc, day) => {
   return acc;
 }, {} as WeeklyPlan);
 
+
+// NocoDB API Helper
+const nocoDBRequest = async (
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  tableName: string,
+  params?: Record<string, any>,
+  body?: any,
+  recordId?: string | number
+): Promise<any> => {
+  if (!NOCODB_BASE_URL || !NOCODB_API_TOKEN || !NOCODB_PROJECT_ID) {
+    throw new Error("NocoDB configuration (URL, Token, or Project ID) is missing in environment variables.");
+  }
+
+  let url = `${NOCODB_BASE_URL}/api/v1/db/data/noco/${NOCODB_PROJECT_ID}/${tableName}`;
+  if (recordId) {
+    url += `/${recordId}`;
+  }
+
+  if (params && Object.keys(params).length > 0) {
+    const queryParams = new URLSearchParams(params).toString();
+    url += `?${queryParams}`;
+  }
+
+  const headers: HeadersInit = {
+    'xc-token': NOCODB_API_TOKEN,
+    'Content-Type': 'application/json',
+  };
+
+  const options: RequestInit = {
+    method,
+    headers,
+  };
+
+  if (body && (method === 'POST' || method === 'PATCH')) {
+    options.body = JSON.stringify(body);
+  }
+  
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ message: response.statusText }));
+    console.error(`NocoDB API Error (${response.status}) on ${tableName}:`, errorData);
+    throw new Error(`NocoDB: ${errorData.message || response.statusText} (Status: ${response.status})`);
+  }
+  
+  // NocoDB DELETE often returns 200/204 with count or simple success, not always JSON
+  if (method === 'DELETE') {
+    if (response.status === 204 || response.status === 200) { // 200 if it returns a count
+      try {
+        return await response.json(); // if there's a body like { count: 1 }
+      } catch (e) {
+        return { success: true }; // if no body or not json
+      }
+    }
+  }
+
+  return response.json();
+};
+
+
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan>(initialWeeklyPlan);
@@ -46,183 +106,220 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoadingPlanner, setIsLoadingPlanner] = useState<boolean>(true);
   const [errorRecipes, setErrorRecipes] = useState<Error | null>(null);
   const [errorPlanner, setErrorPlanner] = useState<Error | null>(null);
+  const [isNocoDBConfigured, setIsNocoDBConfigured] = useState<boolean>(false);
 
-  const fetchRecipes = useCallback(async () => {
-    setIsLoadingRecipes(true);
-    setErrorRecipes(null);
-    try {
-      const { data, error } = await supabase
-        .from('recipes')
-        .select(`
-          *,
-          ingredients (*)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setRecipes(data as Recipe[] || []);
-    } catch (e) {
-      console.error("Error fetching recipes:", e);
-      setErrorRecipes(e as Error);
-      setRecipes([]); // Reset on error
-    } finally {
+  useEffect(() => {
+    if (NOCODB_BASE_URL && NOCODB_API_TOKEN && NOCODB_PROJECT_ID) {
+      setIsNocoDBConfigured(true);
+    } else {
+      const errMsg = "NocoDB nie jest skonfigurowany. Sprawdź zmienne środowiskowe NOCODB_BASE_URL, NOCODB_API_TOKEN, NOCODB_PROJECT_ID. Funkcje zapisu i odczytu danych są wyłączone.";
+      console.error(errMsg);
+      setErrorRecipes(new Error(errMsg));
+      setErrorPlanner(new Error(errMsg));
       setIsLoadingRecipes(false);
-    }
-  }, []);
-
-  const fetchPlanner = useCallback(async () => {
-    setIsLoadingPlanner(true);
-    setErrorPlanner(null);
-    try {
-      const { data, error } = await supabase
-        .from('planned_meals')
-        .select('*')
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      
-      const newWeeklyPlan = { ...initialWeeklyPlan };
-      (data || []).forEach(meal => {
-        if (newWeeklyPlan[meal.day as DayOfWeek]) {
-          newWeeklyPlan[meal.day as DayOfWeek].push(meal as PlannedMeal);
-        } else {
-          newWeeklyPlan[meal.day as DayOfWeek] = [meal as PlannedMeal];
-        }
-      });
-      setWeeklyPlan(newWeeklyPlan);
-
-    } catch (e) {
-      console.error("Error fetching planner data:", e);
-      setErrorPlanner(e as Error);
-      setWeeklyPlan({...initialWeeklyPlan}); // Reset on error
-    } finally {
       setIsLoadingPlanner(false);
     }
   }, []);
 
+  // Helper to map NocoDB record to our types (Id -> id, CreatedAt -> created_at, etc.)
+  const mapNocoRecord = (nocoRecord: any): any => {
+    const mapped: any = {};
+    for (const key in nocoRecord) {
+      if (key === 'Id') mapped['id'] = nocoRecord[key]?.toString(); // Ensure ID is string
+      else if (key === 'CreatedAt') mapped['created_at'] = nocoRecord[key];
+      else if (key === 'UpdatedAt') mapped['updated_at'] = nocoRecord[key];
+      // Assuming NocoDB column names match our type field names (e.g. title, instructions, recipe_id)
+      // For keys like 'RecipeId' in NocoDB, ensure they map to 'recipe_id' in our types
+      // This simple mapping assumes direct match or NocoDB column names are already like 'recipe_id'
+      else {
+         // Convert keys like 'RecipeId' from NocoDB to 'recipe_id'
+        const newKey = key.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+        if (key.toLowerCase() === 'recipeid' || key.toLowerCase() === 'recipe_id') {
+            mapped['recipe_id'] = nocoRecord[key]?.toString();
+        } else {
+            mapped[key.charAt(0).toLowerCase() + key.slice(1)] = nocoRecord[key];
+        }
+      }
+    }
+    return mapped;
+  };
+  
+    const mapNocoRecipe = (nocoRecipe: any, ingredients: Ingredient[]): Recipe => {
+    return {
+      id: nocoRecipe.Id?.toString(),
+      title: nocoRecipe.title,
+      instructions: nocoRecipe.instructions,
+      prep_time: nocoRecipe.prep_time,
+      category: nocoRecipe.category as RecipeCategory,
+      tags: Array.isArray(nocoRecipe.tags) ? nocoRecipe.tags : (typeof nocoRecipe.tags === 'string' ? JSON.parse(nocoRecipe.tags || "[]") : []),
+      created_at: nocoRecipe.CreatedAt || nocoRecipe.created_at,
+      ingredients: ingredients,
+    };
+  };
+
+  const mapNocoIngredient = (nocoIngredient: any): Ingredient => {
+    return {
+      id: nocoIngredient.Id?.toString(),
+      recipe_id: nocoIngredient.recipe_id?.toString(),
+      name: nocoIngredient.name,
+      quantity: nocoIngredient.quantity,
+      unit: nocoIngredient.unit,
+    };
+  };
+
+  const mapNocoPlannedMeal = (nocoPlannedMeal: any): PlannedMeal => {
+    return {
+      id: nocoPlannedMeal.Id?.toString(),
+      day: nocoPlannedMeal.day,
+      meal_type: nocoPlannedMeal.meal_type,
+      recipe_id: nocoPlannedMeal.recipe_id?.toString() || null,
+      custom_meal_name: nocoPlannedMeal.custom_meal_name,
+      servings: nocoPlannedMeal.servings,
+      created_at: nocoPlannedMeal.CreatedAt || nocoPlannedMeal.created_at,
+    };
+  };
+
+
+  const fetchRecipes = useCallback(async () => {
+    if (!isNocoDBConfigured) return;
+    setIsLoadingRecipes(true);
+    setErrorRecipes(null);
+    try {
+      let nocoRecipes = await nocoDBRequest('GET', NOCODB_RECIPES_TABLE, { limit: 1000, offset: 0 }); // Adjust limit as needed
+      if (nocoRecipes && nocoRecipes.list) nocoRecipes = nocoRecipes.list; // NocoDB wraps in 'list'
+
+      const recipesWithIngredients: Recipe[] = [];
+      for (const nocoRec of nocoRecipes) {
+        // NocoDB's where filter format: (column,op,value)
+        let nocoIngredients = await nocoDBRequest('GET', NOCODB_INGREDIENTS_TABLE, { where: `(recipe_id,eq,${nocoRec.Id})`, limit: 1000 });
+        if (nocoIngredients && nocoIngredients.list) nocoIngredients = nocoIngredients.list;
+        
+        const mappedIngredients = nocoIngredients.map(mapNocoIngredient);
+        recipesWithIngredients.push(mapNocoRecipe(nocoRec, mappedIngredients));
+      }
+      setRecipes(recipesWithIngredients);
+    } catch (e: any) {
+      console.error("Error fetching recipes from NocoDB:", e);
+      setErrorRecipes(e);
+    } finally {
+      setIsLoadingRecipes(false);
+    }
+  }, [isNocoDBConfigured]);
+
+  const fetchPlanner = useCallback(async () => {
+    if (!isNocoDBConfigured) return;
+    setIsLoadingPlanner(true);
+    setErrorPlanner(null);
+    try {
+      let nocoPlannedMeals = await nocoDBRequest('GET', NOCODB_PLANNED_MEALS_TABLE, { limit: 1000, offset: 0 });
+      if (nocoPlannedMeals && nocoPlannedMeals.list) nocoPlannedMeals = nocoPlannedMeals.list;
+
+      const newWeeklyPlan = { ...initialWeeklyPlan };
+      nocoPlannedMeals.forEach((nocoMeal: any) => {
+        const meal = mapNocoPlannedMeal(nocoMeal);
+        if (newWeeklyPlan[meal.day]) {
+          newWeeklyPlan[meal.day].push(meal);
+        } else {
+          newWeeklyPlan[meal.day] = [meal];
+        }
+      });
+      setWeeklyPlan(newWeeklyPlan);
+    } catch (e: any) {
+      console.error("Error fetching planner data from NocoDB:", e);
+      setErrorPlanner(e);
+    } finally {
+      setIsLoadingPlanner(false);
+    }
+  }, [isNocoDBConfigured]);
+
   useEffect(() => {
-    fetchRecipes();
-    fetchPlanner();
-  }, [fetchRecipes, fetchPlanner]);
+    if (isNocoDBConfigured) {
+      fetchRecipes();
+      fetchPlanner();
+    }
+  }, [isNocoDBConfigured, fetchRecipes, fetchPlanner]);
 
   const addRecipe = async (recipeData: Omit<Recipe, 'id' | 'created_at' | 'ingredients'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }): Promise<Recipe | null> => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return null; }
     try {
-      // Insert recipe
-      const { data: recipeResult, error: recipeError } = await supabase
-        .from('recipes')
-        .insert({
-          title: recipeData.title,
-          instructions: recipeData.instructions,
-          prep_time: recipeData.prep_time,
-          category: recipeData.category,
-          tags: recipeData.tags,
-        })
-        .select()
-        .single();
+      const recipePayload = {
+        title: recipeData.title,
+        instructions: recipeData.instructions,
+        prep_time: recipeData.prep_time,
+        category: recipeData.category,
+        tags: recipeData.tags, // NocoDB JSON column should handle arrays directly; if Text, use JSON.stringify
+      };
+      const newNocoRecipe = await nocoDBRequest('POST', NOCODB_RECIPES_TABLE, undefined, recipePayload);
+      const newRecipeId = newNocoRecipe.Id;
 
-      if (recipeError) throw recipeError;
-      if (!recipeResult) throw new Error("Recipe creation failed.");
-
-      const newRecipe = recipeResult as Recipe;
-
-      // Insert ingredients
-      if (recipeData.ingredients && recipeData.ingredients.length > 0) {
-        const ingredientsToInsert = recipeData.ingredients.map(ing => ({
-          ...ing,
-          recipe_id: newRecipe.id,
-        }));
-        const { error: ingredientsError } = await supabase
-          .from('ingredients')
-          .insert(ingredientsToInsert);
-        if (ingredientsError) throw ingredientsError;
-        // Fetch the newly added ingredients to populate the recipe object correctly
-         const { data: insertedIngredients, error: fetchIngredientsError } = await supabase
-          .from('ingredients')
-          .select('*')
-          .eq('recipe_id', newRecipe.id);
-        if (fetchIngredientsError) throw fetchIngredientsError;
-        newRecipe.ingredients = insertedIngredients || [];
-      } else {
-         newRecipe.ingredients = [];
+      const createdIngredients: Ingredient[] = [];
+      for (const ing of recipeData.ingredients) {
+        const ingredientPayload = { ...ing, recipe_id: newRecipeId };
+        const newNocoIngredient = await nocoDBRequest('POST', NOCODB_INGREDIENTS_TABLE, undefined, ingredientPayload);
+        createdIngredients.push(mapNocoIngredient(newNocoIngredient));
       }
       
-      setRecipes(prev => [newRecipe, ...prev]);
-      return newRecipe;
-    } catch (e) {
-      console.error("Error adding recipe:", e);
-      // setErrorRecipes(e as Error); // Or a more specific error state for mutations
+      await fetchRecipes(); // Refresh the entire list
+      return mapNocoRecipe(newNocoRecipe, createdIngredients);
+    } catch (e: any) {
+      console.error("Error adding recipe to NocoDB:", e);
+      alert(`Błąd podczas dodawania przepisu: ${e.message}`);
       return null;
     }
   };
 
   const updateRecipe = async (recipeData: Omit<Recipe, 'created_at'|'ingredients'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }): Promise<Recipe | null> => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return null; }
     try {
-      // Update recipe details
-      const { data: updatedRecipeResult, error: recipeError } = await supabase
-        .from('recipes')
-        .update({
-          title: recipeData.title,
-          instructions: recipeData.instructions,
-          prep_time: recipeData.prep_time,
-          category: recipeData.category,
-          tags: recipeData.tags,
-        })
-        .eq('id', recipeData.id)
-        .select()
-        .single();
+      const recipePayload = {
+        title: recipeData.title,
+        instructions: recipeData.instructions,
+        prep_time: recipeData.prep_time,
+        category: recipeData.category,
+        tags: recipeData.tags,
+      };
+      const updatedNocoRecipe = await nocoDBRequest('PATCH', NOCODB_RECIPES_TABLE, undefined, recipePayload, recipeData.id);
 
-      if (recipeError) throw recipeError;
-      if (!updatedRecipeResult) throw new Error("Recipe update failed.");
-      
-      const updatedRecipe = updatedRecipeResult as Recipe;
+      // Delete old ingredients: Fetch IDs first, then delete one by one or bulk if NocoDB supports it better
+      let oldIngredients = await nocoDBRequest('GET', NOCODB_INGREDIENTS_TABLE, { where: `(recipe_id,eq,${recipeData.id})`, fields: 'Id', limit: 1000 });
+      if (oldIngredients && oldIngredients.list) oldIngredients = oldIngredients.list;
 
-      // Delete old ingredients
-      const { error: deleteError } = await supabase
-        .from('ingredients')
-        .delete()
-        .eq('recipe_id', recipeData.id);
-      if (deleteError) throw deleteError;
-
-      // Insert new ingredients
-      if (recipeData.ingredients && recipeData.ingredients.length > 0) {
-        const ingredientsToInsert = recipeData.ingredients.map(ing => ({
-          ...ing,
-          recipe_id: recipeData.id,
-        }));
-        const { data: insertedIngredients, error: ingredientsError } = await supabase
-          .from('ingredients')
-          .insert(ingredientsToInsert)
-          .select();
-
-        if (ingredientsError) throw ingredientsError;
-        updatedRecipe.ingredients = insertedIngredients || [];
-      } else {
-        updatedRecipe.ingredients = [];
+      for (const oldIng of oldIngredients) {
+        await nocoDBRequest('DELETE', NOCODB_INGREDIENTS_TABLE, undefined, undefined, oldIng.Id);
       }
       
-      setRecipes(prev => prev.map(r => r.id === updatedRecipe.id ? updatedRecipe : r));
-      return updatedRecipe;
-    } catch (e) {
-      console.error("Error updating recipe:", e);
+      // Add new ingredients
+      const updatedIngredients: Ingredient[] = [];
+      for (const ing of recipeData.ingredients) {
+        const ingredientPayload = { ...ing, recipe_id: recipeData.id };
+        const newNocoIngredient = await nocoDBRequest('POST', NOCODB_INGREDIENTS_TABLE, undefined, ingredientPayload);
+        updatedIngredients.push(mapNocoIngredient(newNocoIngredient));
+      }
+      
+      await fetchRecipes();
+      return mapNocoRecipe(updatedNocoRecipe, updatedIngredients);
+    } catch (e: any) {
+      console.error("Error updating recipe in NocoDB:", e);
+      alert(`Błąd podczas aktualizacji przepisu: ${e.message}`);
       return null;
     }
   };
 
   const deleteRecipe = async (recipeId: string) => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return; }
     try {
-      // ingredients are cascade deleted by DB foreign key constraint
-      // planned_meals recipe_id is set to NULL by DB foreign key constraint
-      const { error } = await supabase
-        .from('recipes')
-        .delete()
-        .eq('id', recipeId);
-      if (error) throw error;
-      
-      setRecipes(prev => prev.filter(r => r.id !== recipeId));
-      // Refresh planner as recipe_id might have been nulled
-      await fetchPlanner();
-    } catch (e) {
-      console.error("Error deleting recipe:", e);
+      // Delete ingredients first
+       let ingredientsToDelete = await nocoDBRequest('GET', NOCODB_INGREDIENTS_TABLE, { where: `(recipe_id,eq,${recipeId})`, fields: 'Id', limit: 1000 });
+      if (ingredientsToDelete && ingredientsToDelete.list) ingredientsToDelete = ingredientsToDelete.list;
+      for (const ing of ingredientsToDelete) {
+        await nocoDBRequest('DELETE', NOCODB_INGREDIENTS_TABLE, undefined, undefined, ing.Id);
+      }
+      // Then delete recipe
+      await nocoDBRequest('DELETE', NOCODB_RECIPES_TABLE, undefined, undefined, recipeId);
+      await fetchRecipes();
+    } catch (e: any) {
+      console.error("Error deleting recipe from NocoDB:", e);
+      alert(`Błąd podczas usuwania przepisu: ${e.message}`);
     }
   };
 
@@ -231,81 +328,112 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addPlannedMeal = async (mealData: Omit<PlannedMeal, 'id' | 'created_at'>): Promise<PlannedMeal | null> => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return null; }
     try {
-      const { data, error } = await supabase
-        .from('planned_meals')
-        .insert(mealData)
-        .select()
-        .single();
-      if (error) throw error;
-      if (!data) throw new Error("Failed to add planned meal.");
-
-      const newMeal = data as PlannedMeal;
-      setWeeklyPlan(prev => ({
-        ...prev,
-        [newMeal.day]: [...(prev[newMeal.day as DayOfWeek] || []), newMeal],
-      }));
-      return newMeal;
-    } catch (e) {
-      console.error("Error adding planned meal:", e);
+      const newNocoMeal = await nocoDBRequest('POST', NOCODB_PLANNED_MEALS_TABLE, undefined, mealData);
+      await fetchPlanner();
+      return mapNocoPlannedMeal(newNocoMeal);
+    } catch (e: any) {
+      console.error("Error adding planned meal to NocoDB:", e);
+      alert(`Błąd podczas dodawania planowanego posiłku: ${e.message}`);
       return null;
     }
   };
 
   const updatePlannedMeal = async (mealData: Omit<PlannedMeal, 'created_at'>): Promise<PlannedMeal | null> => {
-     try {
-      const { data, error } = await supabase
-        .from('planned_meals')
-        .update({
-            day: mealData.day,
-            meal_type: mealData.meal_type,
-            recipe_id: mealData.recipe_id,
-            custom_meal_name: mealData.custom_meal_name,
-            servings: mealData.servings
-        })
-        .eq('id', mealData.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error("Failed to update planned meal.");
-
-      const updatedMeal = data as PlannedMeal;
-      // This needs a more robust update, especially if day changes. For now, simple update.
-      // A full refresh might be easier if day changes: await fetchPlanner();
-      await fetchPlanner(); // Refresh the whole planner for simplicity after an update.
-      return updatedMeal;
-    } catch (e) {
-      console.error("Error updating planned meal:", e);
+     if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return null; }
+    try {
+      const { id, ...payload } = mealData; // Separate id for recordId param
+      const updatedNocoMeal = await nocoDBRequest('PATCH', NOCODB_PLANNED_MEALS_TABLE, undefined, payload, id);
+      await fetchPlanner();
+      return mapNocoPlannedMeal(updatedNocoMeal);
+    } catch (e: any) {
+      console.error("Error updating planned meal in NocoDB:", e);
+      alert(`Błąd podczas aktualizacji planowanego posiłku: ${e.message}`);
       return null;
     }
   };
 
   const deletePlannedMeal = async (plannedMealId: string) => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return; }
     try {
-      const { error } = await supabase
-        .from('planned_meals')
-        .delete()
-        .eq('id', plannedMealId);
-      if (error) throw error;
-      await fetchPlanner(); // Refresh the planner
-    } catch (e) {
-      console.error("Error deleting planned meal:", e);
+      await nocoDBRequest('DELETE', NOCODB_PLANNED_MEALS_TABLE, undefined, undefined, plannedMealId);
+      await fetchPlanner();
+    } catch (e: any) {
+      console.error("Error deleting planned meal from NocoDB:", e);
+      alert(`Błąd podczas usuwania planowanego posiłku: ${e.message}`);
     }
   };
 
   const clearWeeklyPlan = async () => {
+    if (!isNocoDBConfigured) { alert("NocoDB nie jest skonfigurowany."); return; }
     try {
-      // This deletes ALL planned meals. If users were involved, you'd scope this.
-      const { error } = await supabase
-        .from('planned_meals')
-        .delete()
-        .neq('id', crypto.randomUUID()); // Supabase requires a filter for delete, this is a workaround for "delete all"
-        
-      if (error) throw error;
-      setWeeklyPlan({ ...initialWeeklyPlan });
-    } catch (e) {
-      console.error("Error clearing weekly plan:", e);
+      // Fetch all meal IDs then delete. NocoDB might not have a simple "delete all" by table via basic REST.
+      let mealsToClear = await nocoDBRequest('GET', NOCODB_PLANNED_MEALS_TABLE, { fields: 'Id', limit: 10000 }); // High limit
+      if (mealsToClear && mealsToClear.list) mealsToClear = mealsToClear.list;
+      for (const meal of mealsToClear) {
+        await nocoDBRequest('DELETE', NOCODB_PLANNED_MEALS_TABLE, undefined, undefined, meal.Id);
+      }
+      await fetchPlanner(); // This will set the plan to initialWeeklyPlan if empty
+    } catch (e: any) {
+       console.error("Error clearing weekly plan from NocoDB:", e);
+       alert(`Błąd podczas czyszczenia planu tygodniowego: ${e.message}`);
+    }
+  };
+
+  const getAIRecipeSuggestion = async (userPrompt: string): Promise<AISuggestedRecipe | null> => {
+    // This function remains the same, using Gemini API
+    if (!process.env.API_KEY) {
+      console.error("API_KEY is not set. Cannot call Gemini API.");
+      throw new Error("Klucz API nie jest skonfigurowany. Funkcja AI jest niedostępna.");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const availableCategories = Object.values(RecipeCategory).join(', ');
+    const instructionPrompt = `
+      Na podstawie poniższego opisu użytkownika: '${userPrompt}', wygeneruj sugestię przepisu.
+      Przepis powinien zawierać tytuł, listę składników (każdy z nazwą, ilością i jednostką), instrukcje przygotowania krok po kroku, czas przygotowania (np. "30 minut"), kategorię (wybierz jedną z: ${availableCategories}) oraz listę odpowiednich tagów (np. "szybkie", "zdrowe", "wegetariańskie").
+      Zwróć odpowiedź jako pojedynczy obiekt JSON o następującej strukturze:
+      {
+        "title": "string",
+        "ingredients": [{ "name": "string", "quantity": "string", "unit": "string" }],
+        "instructions": "string (kroki oddzielone znakiem nowej linii '\\n')",
+        "prep_time": "string",
+        "category": "string (musi być jedną z podanych kategorii)",
+        "tags": ["string"]
+      }
+      Nie dołączaj żadnego tekstu wyjaśniającego przed ani po obiekcie JSON. Upewnij się, że JSON jest poprawny.
+    `;
+    try {
+      const response: GenerateContentResponse = await ai.models.generateContent({
+        model: GEMINI_MODEL_NAME,
+        contents: instructionPrompt,
+        config: { responseMimeType: "application/json" }
+      });
+      let jsonStr = response.text.trim();
+      const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
+      const match = jsonStr.match(fenceRegex);
+      if (match && match[2]) { jsonStr = match[2].trim(); }
+      const parsedData = JSON.parse(jsonStr);
+      if (!Object.values(RecipeCategory).includes(parsedData.category as RecipeCategory)) {
+        console.warn(`AI zwróciło nieprawidłową kategorię: ${parsedData.category}. Ustawiono domyślną: ${RecipeCategory.INNE}.`);
+        parsedData.category = RecipeCategory.INNE;
+      }
+      if (!parsedData.title || !parsedData.ingredients || !parsedData.instructions || !parsedData.prep_time || !parsedData.tags) {
+          throw new Error("AI zwróciło niekompletne dane przepisu.");
+      }
+      if (!Array.isArray(parsedData.ingredients) || !Array.isArray(parsedData.tags)) {
+          throw new Error("Pola 'ingredients' i 'tags' muszą być tablicami.");
+      }
+      parsedData.ingredients.forEach((ing: any) => {
+          if (typeof ing.name !== 'string' || typeof ing.quantity !== 'string' || typeof ing.unit !== 'string') {
+              throw new Error("Każdy składnik musi zawierać 'name', 'quantity' i 'unit' jako stringi.");
+          }
+      });
+      return parsedData as AISuggestedRecipe;
+    } catch (error) {
+      console.error("Błąd podczas pobierania sugestii przepisu od AI:", error);
+      if (error instanceof Error) { throw new Error(`Nie udało się uzyskać sugestii od AI: ${error.message}`); }
+      throw new Error("Nie udało się uzyskać sugestii od AI. Spróbuj ponownie.");
     }
   };
 
@@ -325,8 +453,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       updatePlannedMeal,
       deletePlannedMeal,
       clearWeeklyPlan,
-      refreshRecipes: fetchRecipes,
+      refreshRecipes: fetchRecipes, 
       refreshPlanner: fetchPlanner,
+      getAIRecipeSuggestion,
     }}>
       {children}
     </DataContext.Provider>

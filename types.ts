@@ -27,6 +27,18 @@ export interface Recipe {
   created_at?: string; // ISO date string from Supabase
 }
 
+// Represents the structure of a recipe as suggested by the AI
+// before it's processed and saved into the main Recipe list.
+export interface AISuggestedRecipe {
+  title: string;
+  ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[];
+  instructions: string; // Can be a single string with newlines, or an array of strings.
+  prep_time: string;
+  category: RecipeCategory;
+  tags: string[];
+}
+
+
 export interface PlannedMeal {
   id: string; // UUID from Supabase
   day: string;
