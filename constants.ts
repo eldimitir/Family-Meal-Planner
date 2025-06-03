@@ -31,7 +31,7 @@ export const LOCAL_STORAGE_KEYS = {
 export const GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17';
 
 // NocoDB Configuration
-export const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://app.nocodb.com/';
+export const NOCODB_BASE_URL = process.env.NOCODB_BASE_URL || 'https://app.nocodb.com';
 export const NOCODB_API_TOKEN = process.env.NOCODB_API_TOKEN || '8fF68FTCqkww_1KO1fLvtJAo8AfnBEWJ5H-Ob8I4';
 export const NOCODB_PROJECT_ID = process.env.NOCODB_PROJECT_ID || 'ph2arub6g8qagko';
 
