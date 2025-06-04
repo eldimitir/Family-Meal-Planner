@@ -28,7 +28,7 @@ export const MEAL_TYPES: string[] = ["Śniadanie", "Drugie Śniadanie", "Obiad",
 // These are placeholders. In a real build environment, you'd use process.env.
 // For client-side only, you might need to replace these directly or use a config file.
 export const SUPABASE_URL = process.env.SUPABASE_URL || "TEST";
-export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "YOUR_SUPABASE_ANON_KEY_PLACEHOLDER";
+export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "TEST";
 
 export const LOCAL_STORAGE_KEYS = {
   AUTH: 'familyMealPlannerAuth',
