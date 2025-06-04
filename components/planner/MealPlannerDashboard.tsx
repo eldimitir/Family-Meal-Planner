@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
-import { DayOfWeek, PlannedMeal, Recipe, WeeklyCalorieTableSummary, PersonWeeklyCalorieSummary, DailyCalorieDetails, MealTypeCalorieBreakdown, OverallDailyCalorieDetails } from '../../types';
+import { DayOfWeek, PlannedMeal, Recipe, WeeklyCalorieTableSummary, PersonDailyCalorieSummary } from '../../types';
 import DayColumn from './DayColumn';
 import AddMealModal from './AddMealModal';
 import Button from '../ui/Button';
-import { DAYS_OF_WEEK, MEAL_TYPES } from '../../constants';
-import { PrintIcon, TrashIcon, EyeIcon } from '../../constants.tsx'; 
+import { DAYS_OF_WEEK } from '../../constants';
+import { PrintIcon, TrashIcon, EyeIcon } from '../../constants.tsx'; // EyeIcon for "Show Plan"
 
 const MealPlannerDashboard: React.FC = () => {
   const { weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes } = useData();
@@ -34,7 +34,7 @@ const MealPlannerDashboard: React.FC = () => {
   };
 
   const handleShowPlan = () => {
-    navigate('/planer/podglad'); 
+    navigate('/planer/podglad'); // Navigate to new preview page
   };
 
   const handleClearPlan = () => {
@@ -46,76 +46,97 @@ const MealPlannerDashboard: React.FC = () => {
   const weeklyCalorieSummaryTable = useMemo((): WeeklyCalorieTableSummary => {
     const summary: WeeklyCalorieTableSummary = {
       persons: {},
-      overallDailyTotals: {},
+      dailyTotals: DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: 0 }), {} as Record<DayOfWeek, number>),
       grandTotal: 0,
     };
-
-    // Initialize overallDailyTotals
-    DAYS_OF_WEEK.forEach(day => {
-        summary.overallDailyTotals[day] = {
-            mealTypes: MEAL_TYPES.reduce((acc, mt) => ({...acc, [mt]: 0}), {} as MealTypeCalorieBreakdown),
-            dayTotal: 0,
-        };
-    });
 
     const allPlannedMeals = Object.values(weeklyPlan).flat();
     const uniquePersonsInPlan = new Set<string>();
 
     allPlannedMeals.forEach(pm => {
-      const recipe = pm.recipe_id ? getRecipeById(pm.recipe_id) : null;
-      if (recipe?.persons) {
-        recipe.persons.forEach(person => uniquePersonsInPlan.add(person));
+      if (pm.recipe_id) {
+        const recipe = getRecipeById(pm.recipe_id);
+        if (recipe && recipe.persons) {
+          recipe.persons.forEach(person => uniquePersonsInPlan.add(person));
+        }
       }
+       // Also consider persons directly assigned to meals if they are not in any recipe persons list
       if (pm.persons) {
         pm.persons.forEach(p => uniquePersonsInPlan.add(p));
       }
     });
     
-    const personNamesForSummary = Array.from(uniquePersonsInPlan);
-    if (personNamesForSummary.length === 0 && allPlannedMeals.some(pm => pm.recipe_id && getRecipeById(pm.recipe_id)?.calories)) {
-        personNamesForSummary.push("Ogółem (brak przypisanych osób)");
-    }
-
-
-    personNamesForSummary.forEach(personName => {
-      summary.persons[personName] = { days: {}, weeklyTotal: 0 };
-      DAYS_OF_WEEK.forEach(day => {
-        summary.persons[personName].days[day] = {
-          mealTypes: MEAL_TYPES.reduce((acc, mt) => ({ ...acc, [mt]: 0 }), {} as MealTypeCalorieBreakdown),
-          dayTotal: 0,
-        };
-      });
-    });
-    
-    allPlannedMeals.forEach(pm => {
-        const recipe = pm.recipe_id ? getRecipeById(pm.recipe_id) : null;
-        if (recipe?.calories && recipe.calories > 0) {
-            const day = pm.day as DayOfWeek;
-            const mealType = pm.meal_type;
-
-            // Update overall daily and meal type totals (counted once per meal)
-            if (summary.overallDailyTotals[day]) {
-                 summary.overallDailyTotals[day]!.mealTypes[mealType] = (summary.overallDailyTotals[day]!.mealTypes[mealType] || 0) + recipe.calories;
-                 summary.overallDailyTotals[day]!.dayTotal += recipe.calories;
-            }
-            summary.grandTotal += recipe.calories;
-            
-            // Distribute to persons
-            const targets = (pm.persons && pm.persons.length > 0) 
-                            ? pm.persons.filter(p => personNamesForSummary.includes(p)) // Only assigned persons who are in the summary scope
-                            : personNamesForSummary; // All persons in summary scope if meal not assigned
-
-            targets.forEach(personName => {
-                if (summary.persons[personName]?.days[day]) {
-                    const personDaySummary = summary.persons[personName].days[day]!;
-                    personDaySummary.mealTypes[mealType] = (personDaySummary.mealTypes[mealType] || 0) + recipe.calories;
-                    personDaySummary.dayTotal += recipe.calories;
-                    summary.persons[personName].weeklyTotal += recipe.calories;
+    // If no persons are defined anywhere but there are recipes with calories, sum under "Ogólne"
+    if (uniquePersonsInPlan.size === 0 && allPlannedMeals.some(pm => pm.recipe_id && getRecipeById(pm.recipe_id)?.calories)) {
+        const generalPersonName = "Ogółem (brak przypisanych osób)";
+        summary.persons[generalPersonName] = DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: 0, total: 0 }), { total: 0 } as PersonDailyCalorieSummary);
+        
+        DAYS_OF_WEEK.forEach(day => {
+            let dayCalories = 0;
+            weeklyPlan[day]?.forEach(pm => {
+                if (pm.recipe_id) {
+                    const recipe = getRecipeById(pm.recipe_id);
+                    if (recipe?.calories) {
+                        dayCalories += recipe.calories;
+                    }
                 }
             });
-        }
-    });
+            summary.persons[generalPersonName][day] = dayCalories;
+            summary.persons[generalPersonName].total += dayCalories;
+            summary.dailyTotals[day] += dayCalories;
+            summary.grandTotal += dayCalories;
+        });
+    } else {
+        uniquePersonsInPlan.forEach(personName => {
+          summary.persons[personName] = DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: 0 }), { total: 0 } as PersonDailyCalorieSummary);
+        });
 
+        DAYS_OF_WEEK.forEach(day => {
+          weeklyPlan[day]?.forEach(pm => {
+            if (pm.recipe_id) {
+              const recipe = getRecipeById(pm.recipe_id);
+              if (recipe?.calories) {
+                if (pm.persons && pm.persons.length > 0) { // Meal assigned to specific persons
+                  pm.persons.forEach(personName => {
+                    if (summary.persons[personName]) { // Ensure person exists in summary
+                      summary.persons[personName][day] = (summary.persons[personName][day] || 0) + recipe.calories;
+                      summary.persons[personName].total += recipe.calories;
+                      summary.dailyTotals[day] += recipe.calories; // This might double count if meal assigned to multiple people and we sum daily totals simply
+                                                                // Let's adjust dailyTotals and grandTotal to sum from person totals to avoid double counting
+                    }
+                  });
+                } else { // Meal not assigned to specific persons, add to all unique persons in the plan context
+                  uniquePersonsInPlan.forEach(personName => {
+                     if (summary.persons[personName]) {
+                        summary.persons[personName][day] = (summary.persons[personName][day] || 0) + recipe.calories;
+                        summary.persons[personName].total += recipe.calories;
+                     }
+                  });
+                }
+              }
+            }
+          });
+        });
+        
+        // Recalculate dailyTotals and grandTotal from person totals to avoid double counting
+        // when a meal (not assigned to specific person) contributes to multiple people.
+        // Or, more accurately, a meal's calories should only be added ONCE to daily/grand totals.
+        // The logic for "dolicz do wszystkich" is for individual person's summary, not the overall sum.
+
+        // Reset daily and grand totals
+        summary.dailyTotals = DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: 0 }), {} as Record<DayOfWeek, number>);
+        summary.grandTotal = 0;
+
+        allPlannedMeals.forEach(pm => {
+            if (pm.recipe_id) {
+                const recipe = getRecipeById(pm.recipe_id);
+                if (recipe?.calories) {
+                    summary.dailyTotals[pm.day as DayOfWeek] += recipe.calories;
+                    summary.grandTotal += recipe.calories;
+                }
+            }
+        });
+    }
     return summary;
   }, [weeklyPlan, getRecipeById, allRecipes]);
 
@@ -158,7 +179,7 @@ const MealPlannerDashboard: React.FC = () => {
       <div className="mt-8 p-4 sm:p-6 bg-white rounded-lg shadow overflow-x-auto">
         <h2 className="text-2xl font-semibold text-slate-700 mb-4">Podsumowanie Kaloryczności Tygodnia (kcal)</h2>
         {Object.keys(weeklyCalorieSummaryTable.persons).length === 0 && Object.values(weeklyPlan).flat().length > 0 && (
-           <p className="text-slate-500">Brak danych o kaloryczności w zaplanowanych przepisach lub brak przypisanych osób do podsumowania.</p>
+           <p className="text-slate-500">Brak danych o kaloryczności w zaplanowanych przepisach lub brak przypisanych osób.</p>
         )}
         {Object.values(weeklyPlan).flat().length === 0 && (
           <p className="text-slate-500">Brak zaplanowanych posiłków w tym tygodniu.</p>
@@ -170,33 +191,21 @@ const MealPlannerDashboard: React.FC = () => {
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Osoba</th>
                 {DAYS_OF_WEEK.map(day => (
-                  <th key={day} className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider" title={day}>{day.substring(0,3)}</th>
+                  <th key={day} className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">{day.substring(0,3)}</th>
                 ))}
                 <th className="px-3 py-2 text-right text-xs font-medium text-sky-600 uppercase tracking-wider">Suma Tyg.</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {Object.entries(weeklyCalorieSummaryTable.persons).map(([personName, personData]) => (
+              {Object.entries(weeklyCalorieSummaryTable.persons).map(([personName, dailyData]) => (
                 <tr key={personName}>
                   <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-slate-800">{personName}</td>
-                  {DAYS_OF_WEEK.map(day => {
-                    const dayDetails = personData.days[day];
-                    const dayTotal = dayDetails?.dayTotal || 0;
-                    // Tooltip for meal type breakdown (optional enhancement)
-                    // const mealTypeTooltip = dayDetails ? 
-                    //   MEAL_TYPES.map(mt => `${mt}: ${dayDetails.mealTypes[mt] || 0}kcal`).join('\n') : '';
-
-                    return (
-                        <td key={`${personName}-${day}`} className="px-3 py-2 whitespace-nowrap text-sm text-slate-600 text-right" /*title={mealTypeTooltip}*/>
-                        {dayTotal > 0 ? dayTotal : '-'}
-                        {/* Optional: Display meal type breakdown directly if needed */}
-                        {/* {dayDetails && Object.entries(dayDetails.mealTypes).map(([mt, cal]) => 
-                            cal > 0 ? <div key={mt} className="text-xs text-gray-400">{mt.substring(0,3)}: {cal}</div> : null
-                        )} */}
-                        </td>
-                    );
-                  })}
-                  <td className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-sky-700 text-right">{personData.weeklyTotal > 0 ? personData.weeklyTotal : '-'}</td>
+                  {DAYS_OF_WEEK.map(day => (
+                    <td key={`${personName}-${day}`} className="px-3 py-2 whitespace-nowrap text-sm text-slate-600 text-right">
+                      {dailyData[day] > 0 ? dailyData[day] : '-'}
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 whitespace-nowrap text-sm font-semibold text-sky-700 text-right">{dailyData.total > 0 ? dailyData.total : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -205,7 +214,7 @@ const MealPlannerDashboard: React.FC = () => {
                     <td className="px-3 py-2 text-left text-xs font-semibold text-slate-700 uppercase">Suma Dnia</td>
                     {DAYS_OF_WEEK.map(day => (
                         <td key={`total-${day}`} className="px-3 py-2 text-right text-xs font-semibold text-slate-700">
-                            {weeklyCalorieSummaryTable.overallDailyTotals[day]?.dayTotal ?? 0 > 0 ? weeklyCalorieSummaryTable.overallDailyTotals[day]?.dayTotal : '-'}
+                            {weeklyCalorieSummaryTable.dailyTotals[day] > 0 ? weeklyCalorieSummaryTable.dailyTotals[day] : '-'}
                         </td>
                     ))}
                     <td className="px-3 py-2 text-right text-xs font-bold text-sky-700">

@@ -30,7 +30,6 @@ export const MEAL_TYPES: string[] = ["Śniadanie", "Drugie Śniadanie", "Obiad",
 export const SUPABASE_URL = process.env.SUPABASE_URL || "https://wcwvulpiozkdtqnxhycv.supabase.co";
 export const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indjd3Z1bHBpb3prZHRxbnhoeWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg2MzI3NDUsImV4cCI6MjA2NDIwODc0NX0.dWVrM014v00CLFViq6NVTg_swpj5r8CT9aMuenSRNDw";
 
-
 export const LOCAL_STORAGE_KEYS = {
   AUTH: 'familyMealPlannerAuth',
   // Add other keys as needed, e.g., for user preferences if they were stored locally
