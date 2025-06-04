@@ -17,7 +17,7 @@ const initialIngredient: Omit<Ingredient, 'recipe_id'> = { id: crypto.randomUUID
 type RecipeFormErrors = Partial<Record<keyof Omit<Recipe, 'ingredients' | 'id' | 'created_at' | 'category_name' | 'category_code_prefix' | 'recipe_internal_prefix'> | 'formIngredients', string>> & { general?: string };
 
 const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
-  const { addRecipe, updateRecipe, recipeCategories, units, getAllIngredientNames, isLoadingCategories } = useData();
+  const { addRecipe, updateRecipe, recipeCategories, units, getAllIngredientNames, getAllRecipePersons, isLoadingCategories } = useData();
   
   const [title, setTitle] = useState('');
   const [formIngredients, setFormIngredients] = useState<(Omit<Ingredient, 'recipe_id'> & { tempId: string })[]>(
@@ -37,6 +37,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
 
   const availableUnits = useMemo(() => units.map(u => u.name), [units]);
   const availableIngredientNames = useMemo(() => getAllIngredientNames(), [getAllIngredientNames]);
+  const availablePersons = useMemo(() => getAllRecipePersons(), [getAllRecipePersons]);
 
   useEffect(() => {
     if (recipeToEdit) {
@@ -44,7 +45,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       setFormIngredients(recipeToEdit.ingredients.map(ing => ({ ...ing, tempId: ing.id || crypto.randomUUID() })));
       setInstructions(recipeToEdit.instructions);
       setPrepTime(recipeToEdit.prep_time);
-      setCategoryId(recipeToEdit.category_id); // Can be null
+      setCategoryId(recipeToEdit.category_id); 
       setTags(recipeToEdit.tags || []);
       setPersons(recipeToEdit.persons || []);
       setCalories(recipeToEdit.calories === null || typeof recipeToEdit.calories === 'undefined' ? '' : recipeToEdit.calories);
@@ -53,21 +54,14 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       setFormIngredients([{ ...initialIngredient, tempId: crypto.randomUUID() }]);
       setInstructions('');
       setPrepTime('');
-      setCategoryId(null); // Default to no category selected
+      setCategoryId(null); 
       setTags([]);
       setCurrentTag('');
       setPersons([]);
       setCurrentPerson('');
       setCalories('');
     }
-  }, [recipeToEdit, recipeCategories]);
-
-  // No automatic default categoryId selection on load for new recipe. User must choose or leave as "Brak kategorii".
-  // useEffect(() => {
-  //   if (!recipeToEdit && !categoryId && recipeCategories.length > 0 && !isLoadingCategories) {
-  //     // setCategoryId(recipeCategories[0].id); // No longer default to first category
-  //   }
-  // }, [recipeCategories, isLoadingCategories, recipeToEdit, categoryId]);
+  }, [recipeToEdit]);
 
 
   const handleIngredientChange = (tempId: string, field: keyof Omit<Ingredient, 'id' | 'recipe_id'>, value: string) => {
@@ -103,7 +97,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
   const handlePersonRemove = (personToRemove: string) => setPersons(persons.filter(person => person !== personToRemove));
 
   const categoryOptions = [
-    { value: "", label: "Brak kategorii" }, // Option for no category
+    { value: "", label: "Brak kategorii" }, 
     ...recipeCategories.map(cat => ({ value: cat.id, label: `${String(cat.prefix).padStart(3, '0')} - ${cat.name}` }))
   ];
 
@@ -112,8 +106,6 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
     if (!title.trim()) newErrors.title = "Tytuł jest wymagany.";
     if (!instructions.trim()) newErrors.instructions = "Instrukcje są wymagane.";
     if (!prepTime.trim()) newErrors.prep_time = "Czas przygotowania jest wymagany.";
-    // categoryId can be null, so no validation needed for it being present.
-    // if (!categoryId) newErrors.category_id = "Kategoria jest wymagana.";
     if (formIngredients.some(ing => !ing.name.trim() || !ing.quantity.trim())) {
       newErrors.formIngredients = "Wszystkie składniki muszą mieć nazwę i ilość.";
     }
@@ -137,7 +129,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       title,
       instructions,
       prep_time: prepTime,
-      category_id: categoryId || null, // Pass null if empty string (no category selected)
+      category_id: categoryId || null, 
       tags,
       persons,
       calories: calories === '' || calories === null ? null : parseInt(String(calories), 10),
@@ -201,10 +193,9 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
         <Select 
             label="Kategoria" 
             options={categoryOptions} 
-            value={categoryId || ""} // Handle null value for select
-            onChange={(e) => setCategoryId(e.target.value || null)} // Set to null if "" selected
+            value={categoryId || ""} 
+            onChange={(e) => setCategoryId(e.target.value || null)} 
             error={errors.category_id} 
-            // Not required anymore, can be "Brak kategorii"
             disabled={isSubmitting || isLoadingCategories}
             placeholder={isLoadingCategories ? "Ładowanie kategorii..." : "Wybierz kategorię"}
         />
@@ -222,9 +213,14 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Osoby (np. Michał, Kasia)</label>
         <div className="flex items-center space-x-2 mb-2">
-          <Input containerClassName="mb-0 flex-1" placeholder="Dodaj osobę" value={currentPerson} onChange={(e) => setCurrentPerson(e.target.value)} 
+          <Input 
+            containerClassName="mb-0 flex-1" 
+            placeholder="Dodaj osobę" 
+            value={currentPerson} 
+            onChange={(e) => setCurrentPerson(e.target.value)} 
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePersonAdd();}}}
             disabled={isSubmitting}
+            list="recipe-persons"
           />
           <Button type="button" variant="secondary" size="sm" onClick={handlePersonAdd} disabled={isSubmitting}>Dodaj osobę</Button>
         </div>
@@ -276,6 +272,9 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       </datalist>
       <datalist id="ingredient-names">
         {availableIngredientNames.map(name => <option key={name} value={name} />)}
+      </datalist>
+      <datalist id="recipe-persons">
+        {availablePersons.map(personName => <option key={personName} value={personName} />)}
       </datalist>
     </form>
   );

@@ -1,30 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Card from '../ui/Card';
 import { useData } from '../../contexts/DataContext';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { PlusIcon, TrashIcon, EditIcon } from '../../constants.tsx';
-import { Unit, RecipeCategoryDB } from '../../types';
+import { Unit, RecipeCategoryDB, ExportData } from '../../types';
 import Modal from '../ui/Modal';
 
 const SettingsPage: React.FC = () => {
   const { 
     units, addUnit, deleteUnit, isLoadingUnits, errorUnits,
     recipeCategories, addRecipeCategory, updateRecipeCategory, deleteRecipeCategory, 
-    isLoadingCategories, errorCategories, refreshCategories
+    isLoadingCategories, errorCategories, refreshCategories,
+    exportAllData, importAllData
   } = useData();
   
-  // Unit Management State
   const [newUnitName, setNewUnitName] = useState('');
   const [isAddingUnit, setIsAddingUnit] = useState(false);
 
-  // Category Management State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoryToEdit, setCategoryToEdit] = useState<RecipeCategoryDB | null>(null);
   const [currentCategoryName, setCurrentCategoryName] = useState('');
   const [currentCategoryPrefix, setCurrentCategoryPrefix] = useState<string | number>('');
   const [categoryFormError, setCategoryFormError] = useState('');
   const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
 
   const handleAddUnit = async (e: React.FormEvent) => {
@@ -44,7 +47,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  // Category Management Functions
   const openNewCategoryModal = () => {
     setCategoryToEdit(null);
     setCurrentCategoryName('');
@@ -89,15 +91,8 @@ const SettingsPage: React.FC = () => {
 
       if (success) {
         setIsCategoryModalOpen(false);
-        refreshCategories(); // Ensure list is up-to-date
-      } else {
-        // Error might be handled by alert in DataContext, or set here
-        // setCategoryFormError("Nie udało się zapisać kategorii. Sprawdź, czy nazwa i prefiks są unikalne.");
+        // refreshCategories(); // DataContext methods should handle refresh internally now
       }
-    } catch (error) {
-      // This catch might not be reached if DataContext handles errors with alerts.
-      // console.error("Error in category form submit:", error);
-      // setCategoryFormError("Wystąpił błąd podczas zapisywania kategorii.");
     } finally {
       setIsSubmittingCategory(false);
     }
@@ -106,7 +101,49 @@ const SettingsPage: React.FC = () => {
   const handleDeleteCategory = async (categoryId: string) => {
     if (window.confirm("Czy na pewno chcesz usunąć tę kategorię? Przepisy w tej kategorii nie zostaną usunięte, ale stracą powiązanie z kategorią.")) {
       await deleteRecipeCategory(categoryId);
-      refreshCategories();
+      // refreshCategories(); // DataContext methods should handle refresh
+    }
+  };
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    const data = await exportAllData();
+    if (data) {
+      const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
+      const link = document.createElement("a");
+      link.href = jsonString;
+      link.download = `rodzinny-planer-dane-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      link.remove();
+    }
+    setIsExporting(false);
+  };
+
+  const handleImportFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const jsonData = JSON.parse(text) as ExportData;
+      
+      if (window.confirm("UWAGA: Importowanie danych spowoduje USUNIĘCIE wszystkich aktualnie istniejących danych (przepisów, kategorii, jednostek, planu posiłków) i zastąpienie ich danymi z pliku. Czy na pewno chcesz kontynuować?")) {
+        const success = await importAllData(jsonData);
+        if (success) {
+          alert("Dane zostały pomyślnie zaimportowane.");
+        } else {
+         // Error alert handled by DataContext
+        }
+      }
+    } catch (error) {
+      console.error("Error processing import file:", error);
+      alert(`Błąd podczas przetwarzania pliku importu: ${(error as Error).message}`);
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""; // Reset file input
+      }
     }
   };
 
@@ -115,7 +152,34 @@ const SettingsPage: React.FC = () => {
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-slate-800">Ustawienia</h1>
       
-      {/* Category Management Card */}
+      <Card>
+        <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarządzanie Danymi</h2>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Button onClick={handleExportData} variant="primary" isLoading={isExporting} disabled={isExporting || isImporting}>
+            Exportuj Dane (JSON)
+          </Button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImportFileSelected} 
+            accept=".json" 
+            className="hidden" 
+            id="import-file-input"
+            disabled={isImporting || isExporting}
+          />
+          <Button 
+            variant="secondary" 
+            onClick={() => fileInputRef.current?.click()}
+            isLoading={isImporting}
+            disabled={isImporting || isExporting}
+          >
+            Importuj Dane (JSON)
+          </Button>
+        </div>
+         { (isImporting || isExporting) && <p className="text-sm text-sky-600 mt-2">{isImporting ? "Importowanie danych..." : "Eksportowanie danych..."}</p>}
+         <p className="text-xs text-slate-500 mt-2">Eksport tworzy kopię zapasową wszystkich Twoich danych. Import zastępuje wszystkie istniejące dane danymi z pliku.</p>
+      </Card>
+      
       <Card>
         <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-sky-700">Zarządzanie Kategoriami Przepisów</h2>
@@ -134,7 +198,7 @@ const SettingsPage: React.FC = () => {
         {!isLoadingCategories && recipeCategories.length > 0 && (
           <div className="max-h-96 overflow-y-auto border rounded-lg">
             <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Prefiks</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nazwa Kategorii</th>
@@ -174,8 +238,6 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
-
-      {/* Unit Management Card */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarządzanie Jednostkami Miar</h2>
         <form onSubmit={handleAddUnit} className="flex items-end gap-2 mb-6">
@@ -202,7 +264,7 @@ const SettingsPage: React.FC = () => {
         {!isLoadingUnits && units.length > 0 && (
           <div className="max-h-96 overflow-y-auto border rounded-lg">
             <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-50 sticky top-0">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Nazwa Jednostki
@@ -234,47 +296,34 @@ const SettingsPage: React.FC = () => {
           </div>
         )}
       </Card>
-
-      {/* Other Settings & Info Cards (Unchanged) */}
-      <Card>
-        <h2 className="text-xl font-semibold text-sky-700 mb-4">Pozostałe Ustawienia</h2>
-        <p className="text-slate-600">
-          W przyszłości znajdziesz tutaj więcej opcji konfiguracji.
-        </p>
-         <p className="text-slate-500 mt-6 text-sm">
-            Pamiętaj, że obecna wersja aplikacji przechowuje wszystkie dane (przepisy, plany) 
-            lokalnie w Twojej przeglądarce (jeśli używane jest Supabase, to tam). Wyczyść dane przeglądarki lub odpowiednie tabele w Supabase, aby usunąć wszystkie informacje.
-        </p>
-      </Card>
-
+      
        <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-4">Informacje o Aplikacji</h2>
         <p className="text-slate-600">
           <strong>Nazwa:</strong> Rodzinny Planer Posiłków
         </p>
         <p className="text-slate-600">
-          <strong>Wersja:</strong> 1.2.0 (Demo)
+          <strong>Wersja:</strong> 1.3.0 (Demo)
         </p>
          <p className="text-slate-600 mt-2">
            Ta aplikacja została stworzona, aby pomóc w organizacji codziennego planowania posiłków.
         </p>
       </Card>
 
-      {/* Category Modal */}
       <Modal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)} title={categoryToEdit ? 'Edytuj Kategorię' : 'Dodaj Nową Kategorię'}>
         <form onSubmit={handleCategoryFormSubmit} className="space-y-4">
           <Input
             label="Nazwa kategorii"
             value={currentCategoryName}
             onChange={(e) => setCurrentCategoryName(e.target.value)}
-            error={categoryFormError.includes('Nazwa') ? categoryFormError : undefined}
+            error={categoryFormError.includes('Nazwa') || (categoryFormError && !categoryFormError.includes('Prefiks')) ? categoryFormError : undefined}
             required
             disabled={isSubmittingCategory}
           />
           <Input
             label="Prefiks (numer)"
             type="number"
-            value={String(currentCategoryPrefix)} // Keep as string for input control, convert on submit
+            value={String(currentCategoryPrefix)} 
             onChange={(e) => setCurrentCategoryPrefix(e.target.value)}
             error={categoryFormError.includes('Prefiks') ? categoryFormError : undefined}
             min="1"

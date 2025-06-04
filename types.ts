@@ -62,17 +62,44 @@ export interface ShoppingListItem {
 
 export type DayOfWeek = "Poniedziałek" | "Wtorek" | "Środa" | "Czwartek" | "Piątek" | "Sobota" | "Niedziela";
 
-// For calorie summary table
-export interface PersonDailyCalorieSummary {
-  [day: string]: number; // Calories for DayOfWeek
-  total: number; // Total for the person for the week
+// For calorie summary table - Revised for Person/Day/MealType
+export interface MealTypeCalorieBreakdown {
+  [mealType: string]: number; // Calories for a specific meal type
 }
+
+export interface DailyCalorieDetails {
+  mealTypes: MealTypeCalorieBreakdown; // Calories broken down by meal type for the day
+  dayTotal: number; // Total calories for the day
+}
+
+export interface PersonWeeklyCalorieSummary {
+  days: {
+    [day in DayOfWeek]?: DailyCalorieDetails; // Calories for each day, broken down
+  };
+  weeklyTotal: number; // Total for the person for the week
+}
+
+export interface OverallDailyCalorieDetails {
+   mealTypes: MealTypeCalorieBreakdown;
+   dayTotal: number;
+}
+
 export interface WeeklyCalorieTableSummary {
   persons: {
-    [personName: string]: PersonDailyCalorieSummary;
+    [personName: string]: PersonWeeklyCalorieSummary;
   };
-  dailyTotals: {
-    [day: string]: number; // Total for DayOfWeek across all persons
+  overallDailyTotals: { // Renamed from dailyTotals for clarity
+    [day in DayOfWeek]?: OverallDailyCalorieDetails; // Overall total for DayOfWeek across all persons, with meal type breakdown
   };
   grandTotal: number;
+}
+
+// Structure for data export/import
+export interface ExportData {
+  version: number;
+  timestamp: string;
+  recipe_categories: RecipeCategoryDB[];
+  units: Unit[];
+  recipes: Recipe[]; // Recipes should include their ingredients
+  planned_meals: PlannedMeal[];
 }
