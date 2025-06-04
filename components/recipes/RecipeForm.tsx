@@ -1,59 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { Recipe, Ingredient, RecipeCategory } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Recipe, Ingredient, RecipeCategoryDB } from '../../types';
 import { useData } from '../../contexts/DataContext';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { PlusIcon, TrashIcon } from '../../constants.tsx';
-import { RECIPE_CATEGORIES_OPTIONS } from '../../constants';
 
 interface RecipeFormProps {
   onClose: () => void;
   recipeToEdit?: Recipe;
 }
 
-// Ensure ingredient IDs are strings for consistency, even if transient client-side ones
 const initialIngredient: Omit<Ingredient, 'recipe_id'> = { id: crypto.randomUUID(), name: '', quantity: '', unit: '' };
 
-type RecipeFormErrors = Partial<Record<keyof Omit<Recipe, 'ingredients' | 'id' | 'created_at'> | 'formIngredients', string>> & { general?: string };
-
+type RecipeFormErrors = Partial<Record<keyof Omit<Recipe, 'ingredients' | 'id' | 'created_at' | 'category_name' | 'category_code_prefix' | 'recipe_internal_prefix'> | 'formIngredients', string>> & { general?: string };
 
 const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
-  const { addRecipe, updateRecipe } = useData();
+  const { addRecipe, updateRecipe, recipeCategories, units, getAllIngredientNames, isLoadingCategories } = useData();
+  
   const [title, setTitle] = useState('');
-  // Store ingredients with client-side temporary IDs for form management
   const [formIngredients, setFormIngredients] = useState<(Omit<Ingredient, 'recipe_id'> & { tempId: string })[]>(
     [{ ...initialIngredient, tempId: crypto.randomUUID() }]
   );
   const [instructions, setInstructions] = useState('');
   const [prepTime, setPrepTime] = useState('');
-  const [category, setCategory] = useState<RecipeCategory>(RecipeCategory.OBIAD);
+  const [categoryId, setCategoryId] = useState<string>('');
   const [tags, setTags] = useState<string[]>([]);
   const [currentTag, setCurrentTag] = useState('');
+  const [persons, setPersons] = useState<string[]>([]);
+  const [currentPerson, setCurrentPerson] = useState('');
+  const [calories, setCalories] = useState<number | string>(''); // Use string for input, parse to number
+  
   const [errors, setErrors] = useState<RecipeFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const availableUnits = useMemo(() => units.map(u => u.name), [units]);
+  const availableIngredientNames = useMemo(() => getAllIngredientNames(), [getAllIngredientNames]);
 
   useEffect(() => {
     if (recipeToEdit) {
       setTitle(recipeToEdit.title);
-      // Map existing ingredients to form ingredients with tempIds
       setFormIngredients(recipeToEdit.ingredients.map(ing => ({ ...ing, tempId: ing.id || crypto.randomUUID() })));
       setInstructions(recipeToEdit.instructions);
       setPrepTime(recipeToEdit.prep_time);
-      setCategory(recipeToEdit.category);
+      setCategoryId(recipeToEdit.category_id);
       setTags(recipeToEdit.tags || []);
+      setPersons(recipeToEdit.persons || []);
+      setCalories(recipeToEdit.calories === null || typeof recipeToEdit.calories === 'undefined' ? '' : recipeToEdit.calories);
     } else {
-      // Reset form for new recipe
       setTitle('');
       setFormIngredients([{ ...initialIngredient, tempId: crypto.randomUUID() }]);
       setInstructions('');
       setPrepTime('');
-      setCategory(RecipeCategory.OBIAD);
+      setCategoryId(recipeCategories.length > 0 ? recipeCategories[0].id : '');
       setTags([]);
       setCurrentTag('');
+      setPersons([]);
+      setCurrentPerson('');
+      setCalories('');
     }
-  }, [recipeToEdit]);
+  }, [recipeToEdit, recipeCategories]); // recipeCategories added as dep
+
+  // Set default categoryId when categories load and it's a new recipe
+   useEffect(() => {
+    if (!recipeToEdit && !categoryId && recipeCategories.length > 0 && !isLoadingCategories) {
+      setCategoryId(recipeCategories[0].id);
+    }
+  }, [recipeCategories, isLoadingCategories, recipeToEdit, categoryId]);
+
 
   const handleIngredientChange = (tempId: string, field: keyof Omit<Ingredient, 'id' | 'recipe_id'>, value: string) => {
     setFormIngredients(prevIngredients =>
@@ -77,18 +92,29 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       setCurrentTag('');
     }
   };
+  const handleTagRemove = (tagToRemove: string) => setTags(tags.filter(tag => tag !== tagToRemove));
 
-  const handleTagRemove = (tagToRemove: string) => {
-    setTags(tags.filter(tag => tag !== tagToRemove));
+  const handlePersonAdd = () => {
+    if (currentPerson.trim() !== '' && !persons.includes(currentPerson.trim())) {
+      setPersons([...persons, currentPerson.trim()]);
+      setCurrentPerson('');
+    }
   };
+  const handlePersonRemove = (personToRemove: string) => setPersons(persons.filter(person => person !== personToRemove));
+
+  const categoryOptions = recipeCategories.map(cat => ({ value: cat.id, label: cat.name }));
 
   const validateForm = (): boolean => {
     const newErrors: RecipeFormErrors = {};
     if (!title.trim()) newErrors.title = "Tytuł jest wymagany.";
     if (!instructions.trim()) newErrors.instructions = "Instrukcje są wymagane.";
     if (!prepTime.trim()) newErrors.prep_time = "Czas przygotowania jest wymagany.";
+    if (!categoryId) newErrors.category_id = "Kategoria jest wymagana.";
     if (formIngredients.some(ing => !ing.name.trim() || !ing.quantity.trim())) {
       newErrors.formIngredients = "Wszystkie składniki muszą mieć nazwę i ilość.";
+    }
+    if (calories !== '' && isNaN(Number(calories))) {
+        newErrors.calories = "Kaloryczność musi być liczbą.";
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -97,25 +123,26 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
-
     setIsSubmitting(true);
 
     const processedIngredients = formIngredients
         .filter(ing => ing.name.trim() !== '')
-        .map(({ tempId, id, ...rest }) => ({...rest})); // Remove tempId and original id before sending to Supabase
+        .map(({ tempId, id, ...rest }) => ({...rest}));
 
     const recipePayload = {
       title,
       instructions,
       prep_time: prepTime,
-      category,
+      category_id: categoryId,
       tags,
+      persons,
+      calories: calories === '' || calories === null ? null : parseInt(String(calories), 10),
       ingredients: processedIngredients,
     };
 
     try {
       if (recipeToEdit) {
-        await updateRecipe({ ...recipePayload, id: recipeToEdit.id });
+        await updateRecipe({ ...recipePayload, id: recipeToEdit.id, recipe_internal_prefix: recipeToEdit.recipe_internal_prefix });
       } else {
         await addRecipe(recipePayload);
       }
@@ -136,9 +163,23 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
         <label className="block text-sm font-medium text-slate-700 mb-1">Składniki</label>
         {formIngredients.map((ingredient) => (
           <div key={ingredient.tempId} className="flex items-center space-x-2 mb-2">
-            <Input containerClassName="mb-0 flex-1" placeholder="Nazwa" value={ingredient.name} onChange={(e) => handleIngredientChange(ingredient.tempId, 'name', e.target.value)} disabled={isSubmitting}/>
+            <Input 
+                containerClassName="mb-0 flex-1" 
+                placeholder="Nazwa" 
+                value={ingredient.name} 
+                onChange={(e) => handleIngredientChange(ingredient.tempId, 'name', e.target.value)} 
+                disabled={isSubmitting}
+                list="ingredient-names"
+            />
             <Input containerClassName="mb-0 w-24" placeholder="Ilość" value={ingredient.quantity} onChange={(e) => handleIngredientChange(ingredient.tempId, 'quantity', e.target.value)} disabled={isSubmitting}/>
-            <Input containerClassName="mb-0 w-28" placeholder="Jednostka" value={ingredient.unit} onChange={(e) => handleIngredientChange(ingredient.tempId, 'unit', e.target.value)} disabled={isSubmitting}/>
+            <Input 
+                containerClassName="mb-0 w-28" 
+                placeholder="Jednostka" 
+                value={ingredient.unit} 
+                onChange={(e) => handleIngredientChange(ingredient.tempId, 'unit', e.target.value)} 
+                disabled={isSubmitting}
+                list="ingredient-units"
+            />
             <Button type="button" variant="danger" size="sm" onClick={() => removeIngredientField(ingredient.tempId)} disabled={formIngredients.length === 1 || isSubmitting}>
               <TrashIcon />
             </Button>
@@ -151,8 +192,51 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       </div>
 
       <Textarea label="Instrukcje przygotowania" value={instructions} onChange={(e) => setInstructions(e.target.value)} error={errors.instructions} required disabled={isSubmitting}/>
-      <Input label="Czas przygotowania (np. 30 minut)" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} error={errors.prep_time} required disabled={isSubmitting}/>
-      <Select label="Kategoria" options={RECIPE_CATEGORIES_OPTIONS} value={category} onChange={(e) => setCategory(e.target.value as RecipeCategory)} required disabled={isSubmitting}/>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input label="Czas przygotowania (np. 30 minut)" value={prepTime} onChange={(e) => setPrepTime(e.target.value)} error={errors.prep_time} required disabled={isSubmitting}/>
+        <Select 
+            label="Kategoria" 
+            options={categoryOptions} 
+            value={categoryId} 
+            onChange={(e) => setCategoryId(e.target.value)} 
+            error={errors.category_id} 
+            required 
+            disabled={isSubmitting || isLoadingCategories || categoryOptions.length === 0}
+            placeholder={isLoadingCategories ? "Ładowanie kategorii..." : "Wybierz kategorię"}
+        />
+      </div>
+      <Input 
+        label="Kaloryczność (opcjonalnie)" 
+        type="number" 
+        value={calories} 
+        onChange={(e) => setCalories(e.target.value)} 
+        error={errors.calories} 
+        disabled={isSubmitting}
+        placeholder="np. 500"
+      />
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Osoby (np. Michał, Kasia)</label>
+        <div className="flex items-center space-x-2 mb-2">
+          <Input containerClassName="mb-0 flex-1" placeholder="Dodaj osobę" value={currentPerson} onChange={(e) => setCurrentPerson(e.target.value)} 
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePersonAdd();}}}
+            disabled={isSubmitting}
+          />
+          <Button type="button" variant="secondary" size="sm" onClick={handlePersonAdd} disabled={isSubmitting}>Dodaj osobę</Button>
+        </div>
+        {persons.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {persons.map(person => (
+              <span key={person} className="bg-sky-100 text-sky-700 px-2 py-1 rounded-full text-sm flex items-center">
+                {person}
+                <button type="button" onClick={() => handlePersonRemove(person)} className="ml-1 text-sky-500 hover:text-sky-700" disabled={isSubmitting}>
+                  &times;
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Tagi</label>
@@ -183,6 +267,12 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
           {recipeToEdit ? 'Zapisz zmiany' : 'Dodaj przepis'}
         </Button>
       </div>
+      <datalist id="ingredient-units">
+        {availableUnits.map(unitName => <option key={unitName} value={unitName} />)}
+      </datalist>
+      <datalist id="ingredient-names">
+        {availableIngredientNames.map(name => <option key={name} value={name} />)}
+      </datalist>
     </form>
   );
 };

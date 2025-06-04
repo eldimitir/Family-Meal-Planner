@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
-import { ShoppingListItem, RecipeCategory } from '../../types';
+import { ShoppingListItem, RecipeCategoryDB } from '../../types';
 import { generateShoppingList } from '../../services/shoppingListService';
 import ShoppingListItemComponent from './ShoppingListItemComponent';
 import Button from '../ui/Button';
@@ -10,13 +10,13 @@ import { PrintIcon, TrashIcon, PlusIcon } from '../../constants.tsx';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
-import { RECIPE_CATEGORIES_OPTIONS } from '../../constants';
+// RECIPE_CATEGORIES_OPTIONS is removed, we'll use fetched categories
 
 const ShoppingListDashboard: React.FC = () => {
-  const { weeklyPlan, recipes } = useData();
+  const { weeklyPlan, recipes, recipeCategories, isLoadingCategories } = useData(); // Added recipeCategories
   const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [itemToEdit, setItemToEdit] = useState<Partial<ShoppingListItem> | null>(null); // Can be partial for new item
+  const [itemToEdit, setItemToEdit] = useState<Partial<ShoppingListItem> | null>(null);
 
   const navigate = useNavigate();
 
@@ -54,13 +54,19 @@ const ShoppingListDashboard: React.FC = () => {
   };
 
   const openAddItemModal = () => {
-    setItemToEdit({ name: '', quantity: '', unit: '', category: RecipeCategory.INNE, checked: false, recipeSources: ['Dodane ręcznie'] });
+    const defaultCategory = recipeCategories.length > 0 ? recipeCategories[0] : null;
+    setItemToEdit({ 
+        name: '', 
+        quantity: '', 
+        unit: '', 
+        category_id: defaultCategory?.id || null, 
+        category_name: defaultCategory?.name || 'Inne',
+        checked: false, 
+        recipeSources: ['Dodane ręcznie'] 
+    });
     setIsModalOpen(true);
   };
   
-  // Basic edit - only allows editing name, quantity, unit of existing for now
-  // A more robust edit for existing items generated from recipes might be complex
-  // This is a placeholder for future enhancement or for manually added items.
   const openEditItemModal = (item: ShoppingListItem) => {
     setItemToEdit(item);
     setIsModalOpen(true);
@@ -68,24 +74,48 @@ const ShoppingListDashboard: React.FC = () => {
 
   const handleSaveItem = () => {
     if (!itemToEdit || !itemToEdit.name || !itemToEdit.quantity) {
-        alert("Nazwa i ilość są wymagane."); // Simple validation
+        alert("Nazwa i ilość są wymagane.");
         return;
     }
+    
+    // Ensure category_name is set if category_id is present
+    let finalItemData = { ...itemToEdit };
+    if (finalItemData.category_id) {
+        const cat = recipeCategories.find(c => c.id === finalItemData.category_id);
+        finalItemData.category_name = cat ? cat.name : 'Inne';
+    } else {
+        finalItemData.category_name = 'Inne'; // Default if no category_id
+    }
 
-    if (itemToEdit.id) { // Editing existing
-        setShoppingList(prev => prev.map(i => i.id === itemToEdit!.id ? itemToEdit as ShoppingListItem : i));
+
+    if (itemToEdit.id && itemToEdit.id !== crypto.randomUUID()) { // Editing existing (check if ID is not a placeholder)
+        setShoppingList(prev => prev.map(i => i.id === finalItemData!.id ? finalItemData as ShoppingListItem : i));
     } else { // Adding new
-        setShoppingList(prev => [...prev, { ...itemToEdit, id: crypto.randomUUID() } as ShoppingListItem]);
+        setShoppingList(prev => [...prev, { ...finalItemData, id: crypto.randomUUID() } as ShoppingListItem]);
     }
     setIsModalOpen(false);
     setItemToEdit(null);
   };
 
+  const modalCategoryOptions = useMemo(() => {
+    return [
+        { value: "", label: "Brak (Inne)"}, // Option for no category or general
+        ...recipeCategories.map(cat => ({ value: cat.id, label: cat.name }))
+    ];
+  }, [recipeCategories]);
 
-  const categories = Array.from(new Set(shoppingList.map(item => item.category || 'Inne')))
+
+  const categoriesForDisplay = Array.from(new Set(shoppingList.map(item => item.category_name || 'Inne')))
     .sort((a, b) => {
-      const order = [...Object.values(RecipeCategory), 'Inne'];
-      return order.indexOf(a as RecipeCategory) - order.indexOf(b as RecipeCategory);
+        // Attempt to sort by original category order if possible, otherwise alphabetically
+        const findOrder = (catName: string) => recipeCategories.findIndex(rc => rc.name === catName);
+        const orderA = findOrder(a);
+        const orderB = findOrder(b);
+
+        if (orderA !== -1 && orderB !== -1) return orderA - orderB;
+        if (orderA !== -1) return -1; // Known categories first
+        if (orderB !== -1) return 1;
+        return a.localeCompare(b); // Fallback to alphabetical for "Inne" or unknown
     });
 
   return (
@@ -113,11 +143,11 @@ const ShoppingListDashboard: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-6">
-          {categories.map(category => (
-            <div key={category} className="bg-white p-4 rounded-lg shadow">
-              <h2 className="text-xl font-semibold text-sky-700 mb-3 border-b pb-2">{category}</h2>
+          {categoriesForDisplay.map(categoryName => (
+            <div key={categoryName} className="bg-white p-4 rounded-lg shadow">
+              <h2 className="text-xl font-semibold text-sky-700 mb-3 border-b pb-2">{categoryName}</h2>
               <div className="space-y-2">
-                {shoppingList.filter(item => (item.category || 'Inne') === category).map(item => (
+                {shoppingList.filter(item => (item.category_name || 'Inne') === categoryName).map(item => (
                   <ShoppingListItemComponent
                     key={item.id}
                     item={item}
@@ -131,16 +161,28 @@ const ShoppingListDashboard: React.FC = () => {
           ))}
         </div>
       )}
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setItemToEdit(null); }} title={itemToEdit?.id ? "Edytuj Produkt" : "Dodaj Produkt Ręcznie"}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setItemToEdit(null); }} title={itemToEdit?.id && itemToEdit.id !== crypto.randomUUID() ? "Edytuj Produkt" : "Dodaj Produkt Ręcznie"}>
         {itemToEdit && (
             <div className="space-y-4">
-                <Input label="Nazwa produktu" value={itemToEdit.name || ''} onChange={e => setItemToEdit(prev => ({...prev!, name: e.target.value}))} />
-                <Input label="Ilość" value={itemToEdit.quantity || ''} onChange={e => setItemToEdit(prev => ({...prev!, quantity: e.target.value}))} />
+                <Input label="Nazwa produktu" value={itemToEdit.name || ''} onChange={e => setItemToEdit(prev => ({...prev!, name: e.target.value}))} required />
+                <Input label="Ilość" value={itemToEdit.quantity || ''} onChange={e => setItemToEdit(prev => ({...prev!, quantity: e.target.value}))} required />
                 <Input label="Jednostka" value={itemToEdit.unit || ''} onChange={e => setItemToEdit(prev => ({...prev!, unit: e.target.value}))} />
-                <Select label="Kategoria (opcjonalnie)" 
-                    options={[{value: "Inne", label:"Inne"}, ...RECIPE_CATEGORIES_OPTIONS]} 
-                    value={itemToEdit.category || RecipeCategory.INNE} 
-                    onChange={e => setItemToEdit(prev => ({...prev!, category: e.target.value as RecipeCategory | string}))} />
+                <Select 
+                    label="Kategoria (opcjonalnie)" 
+                    options={modalCategoryOptions} 
+                    value={itemToEdit.category_id || ""} 
+                    onChange={e => {
+                        const selectedCatId = e.target.value;
+                        const selectedCat = recipeCategories.find(cat => cat.id === selectedCatId);
+                        setItemToEdit(prev => ({
+                            ...prev!, 
+                            category_id: selectedCatId || null,
+                            category_name: selectedCat ? selectedCat.name : 'Inne'
+                        }));
+                    }}
+                    disabled={isLoadingCategories}
+                    placeholder={isLoadingCategories ? "Ładowanie..." : "Wybierz kategorię"}
+                />
                 <div className="flex justify-end space-x-2">
                     <Button variant="secondary" onClick={() => { setIsModalOpen(false); setItemToEdit(null); }}>Anuluj</Button>
                     <Button variant="primary" onClick={handleSaveItem}>Zapisz</Button>
@@ -153,4 +195,3 @@ const ShoppingListDashboard: React.FC = () => {
 };
 
 export default ShoppingListDashboard;
-    

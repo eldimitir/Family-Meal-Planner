@@ -26,7 +26,9 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
         {recipe?.title || meal.custom_meal_name || 'Niezdefiniowany posiłek'}
       </h4>
       <p className="text-xs text-slate-500">{meal.meal_type}</p>
-      <p className="text-xs text-slate-500">Dla: {meal.servings} {meal.servings === 1 ? 'osoby' : 'osób'}</p>
+      {meal.person && <p className="text-xs text-slate-500">Dla: {meal.person}</p>}
+      {/* Servings removed */}
+      {/* <p className="text-xs text-slate-500">Dla: {meal.servings} {meal.servings === 1 ? 'osoby' : 'osób'}</p> */}
       <div className="mt-2 flex justify-end space-x-1">
         <Button variant="ghost" size="sm" onClick={() => onEdit(meal)} className="p-1">
           <EditIcon className="w-4 h-4" />

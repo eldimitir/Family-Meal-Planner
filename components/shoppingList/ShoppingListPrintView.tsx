@@ -1,20 +1,49 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ShoppingListItem, RecipeCategory } from '../../types'; // Make sure RecipeCategory is imported
+import { ShoppingListItem } from '../../types';
+import { useData } from '../../contexts/DataContext'; // To get category order if needed
 
 const ShoppingListPrintView: React.FC = () => {
   const location = useLocation();
+  const { recipeCategories } = useData(); // For sorting categories
   const shoppingListForPrint: ShoppingListItem[] = location.state?.shoppingListForPrint || [];
 
   useEffect(() => {
     if (shoppingListForPrint.length > 0) {
       const timer = setTimeout(() => {
         window.print();
-      }, 500); // Delay print to allow rendering
+      }, 500);
       return () => clearTimeout(timer);
     }
   }, [shoppingListForPrint]);
+
+  const categorizedList = useMemo(() => {
+    const list: { [category: string]: ShoppingListItem[] } = {};
+    shoppingListForPrint.forEach(item => {
+      const category = item.category_name || 'Inne';
+      if (!list[category]) {
+        list[category] = [];
+      }
+      list[category].push(item);
+    });
+    return list;
+  }, [shoppingListForPrint]);
+  
+  const sortedCategories = useMemo(() => {
+    return Object.keys(categorizedList).sort((a, b) => {
+      const findOrder = (catName: string) => recipeCategories.findIndex(rc => rc.name === catName);
+      const orderA = findOrder(a);
+      const orderB = findOrder(b);
+
+      if (a === 'Inne') return 1; // 'Inne' always last
+      if (b === 'Inne') return -1;
+
+      if (orderA !== -1 && orderB !== -1) return orderA - orderB; // Sort by defined order
+      return a.localeCompare(b); // Fallback to alphabetical
+    });
+  }, [categorizedList, recipeCategories]);
+
 
   if (shoppingListForPrint.length === 0) {
     return (
@@ -24,21 +53,6 @@ const ShoppingListPrintView: React.FC = () => {
       </div>
     );
   }
-  
-  // Group items by category for printing
-  const categorizedList: { [category: string]: ShoppingListItem[] } = {};
-  shoppingListForPrint.forEach(item => {
-    const category = item.category || 'Inne';
-    if (!categorizedList[category]) {
-      categorizedList[category] = [];
-    }
-    categorizedList[category].push(item);
-  });
-
-  const categoryOrder = [...Object.values(RecipeCategory), 'Inne'];
-  const sortedCategories = Object.keys(categorizedList).sort((a, b) => {
-    return categoryOrder.indexOf(a as RecipeCategory) - categoryOrder.indexOf(b as RecipeCategory);
-  });
 
   return (
     <div className="print-container p-4 font-sans max-w-2xl mx-auto">
@@ -67,4 +81,3 @@ const ShoppingListPrintView: React.FC = () => {
 };
 
 export default ShoppingListPrintView;
-    

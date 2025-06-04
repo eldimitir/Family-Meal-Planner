@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { Recipe, RecipeCategory } from '../../types';
+import { Recipe, RecipeCategoryDB } from '../../types'; // RecipeCategoryDB instead of RecipeCategory
 import RecipeItem from './RecipeItem';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
-import { RECIPE_CATEGORIES_OPTIONS } from '../../constants';
+import { useData } from '../../contexts/DataContext'; // Import useData to access categories
 
 interface RecipeListProps {
   recipes: Recipe[];
@@ -12,8 +12,9 @@ interface RecipeListProps {
 }
 
 const RecipeList: React.FC<RecipeListProps> = ({ recipes, onEditRecipe }) => {
+  const { recipeCategories, isLoadingCategories } = useData(); // Get categories from context
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState<RecipeCategory | ''>('');
+  const [filterCategoryId, setFilterCategoryId] = useState<string>(''); // Filter by ID now
   const [filterTag, setFilterTag] = useState('');
 
   const allTags = useMemo(() => {
@@ -22,21 +23,27 @@ const RecipeList: React.FC<RecipeListProps> = ({ recipes, onEditRecipe }) => {
     return Array.from(tagsSet).sort();
   }, [recipes]);
 
+  const categoryOptions = useMemo(() => {
+    return [
+      { value: '', label: 'Wszystkie kategorie' },
+      ...recipeCategories.map(cat => ({ value: cat.id, label: cat.name }))
+    ];
+  }, [recipeCategories]);
+
   const filteredRecipes = useMemo(() => {
     return recipes.filter(recipe => {
       const titleMatch = recipe.title.toLowerCase().includes(searchTerm.toLowerCase());
       const ingredientMatch = recipe.ingredients.some(ing => ing.name.toLowerCase().includes(searchTerm.toLowerCase()));
-      const categoryMatch = filterCategory ? recipe.category === filterCategory : true;
+      const categoryMatch = filterCategoryId ? recipe.category_id === filterCategoryId : true;
       const tagMatch = filterTag ? recipe.tags.includes(filterTag) : true;
       
       return (titleMatch || ingredientMatch) && categoryMatch && tagMatch;
     }).sort((a,b) => {
-      // Ensure created_at exists and is a valid date string before comparing
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateB - dateA;
+      return dateB - dateA; // Newest first
     });
-  }, [recipes, searchTerm, filterCategory, filterTag]);
+  }, [recipes, searchTerm, filterCategoryId, filterTag]);
 
   return (
     <div className="space-y-6">
@@ -48,10 +55,12 @@ const RecipeList: React.FC<RecipeListProps> = ({ recipes, onEditRecipe }) => {
           containerClassName="md:col-span-1"
         />
         <Select
-          options={[{ value: '', label: 'Wszystkie kategorie' }, ...RECIPE_CATEGORIES_OPTIONS]}
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value as RecipeCategory | '')}
+          options={categoryOptions}
+          value={filterCategoryId}
+          onChange={(e) => setFilterCategoryId(e.target.value)}
           containerClassName="md:col-span-1"
+          disabled={isLoadingCategories || categoryOptions.length <= 1}
+          placeholder={isLoadingCategories ? "Ładowanie kategorii..." : "Wybierz kategorię"}
         />
         <Select
           options={[{ value: '', label: 'Wszystkie tagi' }, ...allTags.map(tag => ({ value: tag, label: tag }))]}

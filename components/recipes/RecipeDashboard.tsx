@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
 import RecipeList from './RecipeList';
 import RecipeForm from './RecipeForm';
@@ -13,20 +14,36 @@ const RecipeDashboard: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [recipeToEdit, setRecipeToEdit] = useState<Recipe | undefined>(undefined);
 
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const openModalForNew = () => {
     setRecipeToEdit(undefined);
     setIsModalOpen(true);
   };
 
-  const openModalForEdit = (recipe: Recipe) => {
+  // useCallback to stabilize the function for useEffect dependency
+  const openModalForEdit = useCallback((recipe: Recipe) => {
     setRecipeToEdit(recipe);
     setIsModalOpen(true);
-  };
+  }, []);
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setRecipeToEdit(undefined); // Clear after close
+    setRecipeToEdit(undefined);
   };
+
+  useEffect(() => {
+    const recipeIdFromState = location.state?.recipeIdForEdit;
+    if (recipeIdFromState && recipes.length > 0) { // Ensure recipes are loaded
+      const recipe = recipes.find(r => r.id === recipeIdFromState);
+      if (recipe) {
+        openModalForEdit(recipe);
+        // Clear the state from navigation to prevent re-opening on refresh or other navigation
+        navigate(location.pathname, { state: {}, replace: true });
+      }
+    }
+  }, [location.state, recipes, openModalForEdit, navigate]);
 
   return (
     <div className="space-y-8">
@@ -47,4 +64,3 @@ const RecipeDashboard: React.FC = () => {
 };
 
 export default RecipeDashboard;
-    

@@ -1,11 +1,12 @@
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Recipe } from '../../types';
 import { useData } from '../../contexts/DataContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import { EditIcon, TrashIcon, EyeIcon, PrintIcon } from '../../constants.tsx';
+import { EditIcon, TrashIcon, PrintIcon } from '../../constants.tsx';
+import { formatPrefix } from '../../constants';
 
 interface RecipeItemProps {
   recipe: Recipe;
@@ -22,12 +23,28 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
     }
   };
 
+  const formattedCategoryPrefix = formatPrefix(recipe.category_code_prefix);
+  const formattedRecipePrefix = formatPrefix(recipe.recipe_internal_prefix);
+
   return (
     <Card className="flex flex-col justify-between h-full">
       <div>
-        <h3 className="text-xl font-semibold text-sky-700 mb-2 truncate" title={recipe.title}>{recipe.title}</h3>
-        <p className="text-sm text-slate-500 mb-1">Kategoria: {recipe.category}</p>
-        <p className="text-sm text-slate-500 mb-3">Czas przygotowania: {recipe.prep_time}</p>
+        <h3 className="text-xl font-semibold text-sky-700 mb-2 break-words">
+          <Link to={`/przepisy/${recipe.id}`} className="hover:underline">
+            <span className="font-mono text-sm text-slate-500 mr-1">{formattedCategoryPrefix}.{formattedRecipePrefix}</span>
+            {recipe.title}
+          </Link>
+        </h3>
+        <p className="text-sm text-slate-500 mb-1">Kategoria: {recipe.category_name || 'Brak'}</p>
+        <p className="text-sm text-slate-500 mb-1">Czas przygotowania: {recipe.prep_time}</p>
+        {recipe.calories && <p className="text-sm text-slate-500 mb-3">Kaloryczność: {recipe.calories} kcal</p>}
+
+        {recipe.persons && recipe.persons.length > 0 && (
+          <div className="mb-2">
+            <p className="text-xs text-slate-400">Dla: {recipe.persons.join(', ')}</p>
+          </div>
+        )}
+
         {recipe.tags.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-1">
             {recipe.tags.slice(0, 3).map(tag => (
@@ -38,9 +55,7 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
         )}
       </div>
       <div className="mt-4 pt-4 border-t border-slate-200 flex flex-wrap gap-2 justify-end">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/przepisy/${recipe.id}`)} leftIcon={<EyeIcon />} title="Zobacz przepis">
-           <span className="hidden sm:inline">Zobacz</span>
-        </Button>
+        {/* "Zobacz" button removed, title is now a link */}
         <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} leftIcon={<EditIcon />} title="Edytuj przepis">
            <span className="hidden sm:inline">Edytuj</span>
         </Button>

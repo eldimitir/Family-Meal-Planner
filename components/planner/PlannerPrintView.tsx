@@ -8,12 +8,10 @@ const PlannerPrintView: React.FC = () => {
   const { weeklyPlan, getRecipeById } = useData();
 
   useEffect(() => {
-    // Automatically trigger print dialog when component mounts
-    // Delay slightly to ensure content is rendered
     const timer = setTimeout(() => {
       window.print();
     }, 500);
-    return () => clearTimeout(timer); // Cleanup timer on unmount
+    return () => clearTimeout(timer);
   }, []);
 
   const getMealName = (meal: PlannedMeal): string => {
@@ -24,13 +22,6 @@ const PlannerPrintView: React.FC = () => {
     }
     return 'Niezdefiniowany posiłek';
   };
-
-  // Determine the maximum number of meal types planned in any single day for table structure
-  const maxMealSlots = Math.max(...DAYS_OF_WEEK.map(day => {
-    const meals = weeklyPlan[day] || [];
-    const uniqueMealTypes = new Set(meals.map(m => m.meal_type));
-    return uniqueMealTypes.size;
-  }), 0);
 
   const organizedPlan: Record<string, Record<string, PlannedMeal[]>> = {};
   DAYS_OF_WEEK.forEach(day => {
@@ -64,7 +55,9 @@ const PlannerPrintView: React.FC = () => {
                     organizedPlan[day][mealType].map(meal => (
                       <div key={meal.id} className="mb-1">
                         <p className="font-semibold text-sky-800">{getMealName(meal)}</p>
-                        <p className="text-slate-500">({meal.servings} os.)</p>
+                        {/* Servings removed, Person added */}
+                        {meal.person && <p className="text-slate-500">(Dla: {meal.person})</p>}
+                        {/* <p className="text-slate-500">({meal.servings} os.)</p> */}
                       </div>
                     ))
                   ) : (
