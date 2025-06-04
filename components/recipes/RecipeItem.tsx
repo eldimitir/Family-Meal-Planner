@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Recipe } from '../../types';
@@ -23,21 +22,27 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
     }
   };
 
-  const formattedCategoryPrefix = formatPrefix(recipe.category_code_prefix);
-  const formattedRecipePrefix = formatPrefix(recipe.recipe_internal_prefix);
+  const formattedCategoryPrefix = recipe.category_id ? formatPrefix(recipe.category_code_prefix) : null;
+  const formattedRecipePrefix = recipe.category_id ? formatPrefix(recipe.recipe_internal_prefix) : formatPrefix(recipe.recipe_internal_prefix); // recipe_internal_prefix always exists
+
 
   return (
     <Card className="flex flex-col justify-between h-full">
       <div>
-        <h3 className="text-xl font-semibold text-sky-700 mb-2 break-words">
+        <h3 className="text-xl font-semibold text-sky-700 mb-0.5 break-words">
           <Link to={`/przepisy/${recipe.id}`} className="hover:underline">
-            <span className="font-mono text-sm text-slate-500 mr-1">{formattedCategoryPrefix}.{formattedRecipePrefix}</span>
             {recipe.title}
           </Link>
         </h3>
-        <p className="text-sm text-slate-500 mb-1">Kategoria: {recipe.category_name || 'Brak'}</p>
+        {(formattedCategoryPrefix !== null || recipe.category_id === null) && ( // Show prefix line if category exists or if it's uncategorized (to show its own prefix)
+             <p className="font-mono text-xs text-slate-500 mb-2">
+                {recipe.category_id ? `${formattedCategoryPrefix}.${formattedRecipePrefix}` : `---.${formattedRecipePrefix}`}
+             </p>
+        )}
+        
+        <p className="text-sm text-slate-500 mb-1">Kategoria: {recipe.category_name || 'Brak kategorii'}</p>
         <p className="text-sm text-slate-500 mb-1">Czas przygotowania: {recipe.prep_time}</p>
-        {recipe.calories && <p className="text-sm text-slate-500 mb-3">Kaloryczność: {recipe.calories} kcal</p>}
+        {recipe.calories !== null && typeof recipe.calories !== 'undefined' && <p className="text-sm text-slate-500 mb-3">Kaloryczność: {recipe.calories} kcal</p>}
 
         {recipe.persons && recipe.persons.length > 0 && (
           <div className="mb-2">
@@ -55,7 +60,6 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
         )}
       </div>
       <div className="mt-4 pt-4 border-t border-slate-200 flex flex-wrap gap-2 justify-end">
-        {/* "Zobacz" button removed, title is now a link */}
         <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} leftIcon={<EditIcon />} title="Edytuj przepis">
            <span className="hidden sm:inline">Edytuj</span>
         </Button>

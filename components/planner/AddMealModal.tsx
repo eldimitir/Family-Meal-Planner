@@ -19,7 +19,7 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
   const [mealType, setMealType] = useState<string>(MEAL_TYPES[0]);
   const [recipeId, setRecipeId] = useState<string | null>(null);
   const [customMealName, setCustomMealName] = useState<string>('');
-  const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [selectedPersons, setSelectedPersons] = useState<string[]>([]); // Changed to array
   const [isCustomMeal, setIsCustomMeal] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -28,45 +28,38 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
     return getRecipeById(recipeId);
   }, [recipeId, getRecipeById]);
 
-  const personOptions = useMemo(() => {
-    if (!selectedRecipe || !selectedRecipe.persons || selectedRecipe.persons.length === 0) {
-      return [];
-    }
-    return selectedRecipe.persons.map(p => ({ value: p, label: p }));
-  }, [selectedRecipe]);
-
   useEffect(() => {
     if (isOpen) {
       if (mealToEdit) {
         setMealType(mealToEdit.meal_type);
         setRecipeId(mealToEdit.recipe_id);
         setCustomMealName(mealToEdit.custom_meal_name || '');
-        setSelectedPerson(mealToEdit.person);
+        setSelectedPersons(mealToEdit.persons || []);
         setIsCustomMeal(!!mealToEdit.custom_meal_name && !mealToEdit.recipe_id);
-      } else {
+      } else { // New meal
         setMealType(MEAL_TYPES[0]);
         const firstRecipeId = allRecipes.length > 0 ? allRecipes[0].id : null;
         setRecipeId(firstRecipeId);
         setCustomMealName('');
-        // Set selectedPerson based on the first recipe's persons if available
+        
         const firstRecipe = firstRecipeId ? getRecipeById(firstRecipeId) : null;
-        setSelectedPerson(firstRecipe && firstRecipe.persons.length > 0 ? firstRecipe.persons[0] : null);
+        setSelectedPersons(firstRecipe?.persons || []); // Default to all persons from the first recipe
         setIsCustomMeal(false);
       }
       setIsSubmitting(false);
     }
   }, [mealToEdit, allRecipes, isOpen, getRecipeById]);
 
-  // Adjust selectedPerson if recipe changes or personOptions change
+  // Update selectedPersons when recipeId changes (for new meal or recipe change)
   useEffect(() => {
-    if (selectedRecipe && selectedRecipe.persons && selectedRecipe.persons.length > 0) {
-      if (!selectedPerson || !selectedRecipe.persons.includes(selectedPerson)) {
-        setSelectedPerson(selectedRecipe.persons[0]);
+    if (isOpen && !mealToEdit) { // Only for new meals or if recipe explicitly changes
+      if (selectedRecipe && selectedRecipe.persons) {
+        setSelectedPersons(selectedRecipe.persons); // Default to all persons in the recipe
+      } else {
+        setSelectedPersons([]);
       }
-    } else {
-      setSelectedPerson(null); // No persons in recipe or no recipe selected
     }
-  }, [selectedRecipe, personOptions, selectedPerson]);
+  }, [selectedRecipe, isOpen, mealToEdit]);
 
 
   const recipeOptions = allRecipes.map(r => ({ value: r.id, label: r.title }));
@@ -80,7 +73,7 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
       meal_type: mealType,
       recipe_id: isCustomMeal ? null : recipeId,
       custom_meal_name: isCustomMeal ? customMealName.trim() : undefined,
-      person: isCustomMeal ? null : selectedPerson, // Person only relevant for recipe-based meals
+      persons: isCustomMeal || !selectedRecipe || selectedPersons.length === 0 ? null : selectedPersons,
     };
 
     try {
@@ -97,15 +90,25 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
     }
   };
   
-  const handleRecipeChange = (selectedRecipeId: string) => {
-    setRecipeId(selectedRecipeId);
-    if (selectedRecipeId) { 
+  const handleRecipeChange = (newRecipeId: string | null) => {
+    setRecipeId(newRecipeId);
+    const recipe = newRecipeId ? getRecipeById(newRecipeId) : null;
+    if (recipe) { 
       setIsCustomMeal(false);
       setCustomMealName('');
-      // selectedPerson will be updated by the useEffect hook
+      setSelectedPersons(recipe.persons || []); // Default to all persons in new recipe
     } else {
-      setSelectedPerson(null);
+      setSelectedPersons([]); // Clear persons if no recipe or custom meal
+      if (!isCustomMeal) setIsCustomMeal(true); // If recipe cleared, maybe it's custom
     }
+  };
+
+  const handlePersonToggle = (personName: string) => {
+    setSelectedPersons(prev => 
+      prev.includes(personName) 
+        ? prev.filter(p => p !== personName) 
+        : [...prev, personName]
+    );
   };
 
   const canSubmit = isCustomMeal ? customMealName.trim() !== '' : !!recipeId;
@@ -128,10 +131,17 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
             id="isCustomMeal" 
             checked={isCustomMeal}
             onChange={(e) => {
-              setIsCustomMeal(e.target.checked);
-              if (e.target.checked) {
-                setRecipeId(null);
-                setSelectedPerson(null);
+              const custom = e.target.checked;
+              setIsCustomMeal(custom);
+              if (custom) {
+                setRecipeId(null); // Clear recipe if custom
+                setSelectedPersons([]); // Clear persons
+              } else if (allRecipes.length > 0) {
+                // If unchecking custom, reselect first recipe and its persons
+                const firstRecipe = getRecipeById(allRecipes[0].id);
+                setRecipeId(allRecipes[0].id);
+                setSelectedPersons(firstRecipe?.persons || []);
+
               }
             }}
             className="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"
@@ -154,7 +164,7 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
               label="Wybierz przepis"
               options={recipeOptions}
               value={recipeId || ''}
-              onChange={(e) => handleRecipeChange(e.target.value)}
+              onChange={(e) => handleRecipeChange(e.target.value || null)}
               placeholder="Wybierz przepis..."
               disabled={isCustomMeal || allRecipes.length === 0 || isSubmitting}
               required={!isCustomMeal}
@@ -162,17 +172,28 @@ const AddMealModal: React.FC<AddMealModalProps> = ({ isOpen, onClose, day, mealT
             {allRecipes.length === 0 && !isCustomMeal && (
                 <p className="text-sm text-yellow-600">Nie masz jeszcze żadnych przepisów. Dodaj przepis lub zaznacz "Posiłek niestandardowy".</p>
             )}
-            {selectedRecipe && personOptions.length > 0 && (
-              <Select
-                label="Dla kogo"
-                options={personOptions}
-                value={selectedPerson || ''}
-                onChange={(e) => setSelectedPerson(e.target.value)}
-                placeholder="Wybierz osobę..."
-                disabled={isSubmitting || !recipeId}
-              />
+
+            {selectedRecipe && selectedRecipe.persons && selectedRecipe.persons.length > 0 && (
+              <div className="mt-2">
+                <label className="block text-sm font-medium text-slate-700 mb-1">Dla kogo:</label>
+                <div className="space-y-1 max-h-32 overflow-y-auto p-2 border rounded-md">
+                  {selectedRecipe.persons.map(personName => (
+                    <div key={personName} className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`person-${personName}`}
+                        checked={selectedPersons.includes(personName)}
+                        onChange={() => handlePersonToggle(personName)}
+                        className="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"
+                        disabled={isSubmitting}
+                      />
+                      <label htmlFor={`person-${personName}`} className="ml-2 text-sm text-slate-700">{personName}</label>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
-            {selectedRecipe && personOptions.length === 0 && !isCustomMeal && (
+             {selectedRecipe && (!selectedRecipe.persons || selectedRecipe.persons.length === 0) && !isCustomMeal && (
                  <p className="text-sm text-slate-500 mt-1">Ten przepis nie ma przypisanych osób. Posiłek zostanie dodany jako ogólny.</p>
             )}
           </>

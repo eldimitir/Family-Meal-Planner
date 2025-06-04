@@ -1,16 +1,11 @@
-
-import { WeeklyPlan, Recipe, Ingredient, ShoppingListItem } from '../types'; // Removed RecipeCategory as it's now RecipeCategoryDB
+import { WeeklyPlan, Recipe, Ingredient, ShoppingListItem } from '../types'; 
 
 const parseQuantity = (quantityStr: string): number => {
+  if (typeof quantityStr !== 'string') return NaN;
   const firstPart = quantityStr.split(' ')[0].replace(',', '.');
   const num = parseFloat(firstPart);
-  return isNaN(num) ? 0 : num;
+  return isNaN(num) ? NaN : num; // Ensure NaN is returned for non-parsable strings
 };
-
-// const getUnit = (quantityStr: string): string => {
-//     const parts = quantityStr.split(' ');
-//     return parts.length > 1 ? parts.slice(1).join(' ') : '';
-// };
 
 export const generateShoppingList = (weeklyPlan: WeeklyPlan, recipes: Recipe[]): ShoppingListItem[] => {
   const aggregatedIngredients: { [key: string]: ShoppingListItem } = {};
@@ -21,40 +16,54 @@ export const generateShoppingList = (weeklyPlan: WeeklyPlan, recipes: Recipe[]):
     const recipe = recipes.find(r => r.id === plannedMeal.recipe_id);
     if (!recipe) return;
 
-    // Servings multiplier logic needs re-evaluation.
-    // Old: plannedMeal.servings. New: plannedMeal.person (string) or recipe.persons (string[])
-    // For now, assume recipe ingredients are for the whole dish as specified, multiplier is 1.
-    // If a recipe is for 4 people (e.g. recipe.persons.length === 4) and ingredients are for 4,
-    // and planner plans it for "Michal", it's still that whole dish.
-    // The prompt didn't specify quantity adjustments for the new 'person' field. Defaulting to 1.
-    const servingsMultiplier = 1; 
+    const servingsMultiplier = 1; // Assuming recipe ingredients are for the whole dish.
 
     recipe.ingredients.forEach(ingredient => {
+      // Key ensures that "Mąka pszenna (kg)" is different from "Mąka pszenna (szklanka)"
       const key = `${ingredient.name.toLowerCase().trim()}_${ingredient.unit.toLowerCase().trim()}`;
       
-      const currentQuantityNum = parseQuantity(ingredient.quantity);
-      const quantityToAdd = currentQuantityNum * servingsMultiplier;
+      const recipeIngredientOriginalQuantityStr = ingredient.quantity; // Original string e.g., "10 sztuk", "1", "do smaku"
+      const recipeIngredientUnit = ingredient.unit; // e.g., "sztuk", "litr"
 
-      if (quantityToAdd === 0 && !ingredient.quantity.toLowerCase().includes("do smaku") && !ingredient.quantity.toLowerCase().includes("szczypta")) { // Avoid adding zero quantity unless it's "to taste" etc.
-          // console.warn(`Parsed zero quantity for ingredient: ${ingredient.name} (${ingredient.quantity}) from recipe ${recipe.title}. Skipping.`);
-          // return; // Or handle as 1 if it's a non-numeric like "1 opakowanie" that parses to 0
-      }
+      const baseNumericValue = parseQuantity(recipeIngredientOriginalQuantityStr); // Numeric part, or NaN
 
+      if (aggregatedIngredients[key]) { // Item already in list, try to aggregate
+        const existingItem = aggregatedIngredients[key];
+        const existingNumericValue = parseQuantity(existingItem.quantity); // Try to parse current aggregated quantity
 
-      if (aggregatedIngredients[key]) {
-        const existingQuantityNum = parseQuantity(aggregatedIngredients[key].quantity);
-        aggregatedIngredients[key].quantity = `${existingQuantityNum + quantityToAdd} ${ingredient.unit}`;
-        if (!aggregatedIngredients[key].recipeSources.includes(recipe.title)) {
-            aggregatedIngredients[key].recipeSources.push(recipe.title);
+        if (!isNaN(existingNumericValue) && !isNaN(baseNumericValue)) { // Both current and new are numeric
+          existingItem.quantity = `${(existingNumericValue + (baseNumericValue * servingsMultiplier))} ${recipeIngredientUnit}`;
+        } else {
+          // Cannot sum numerically (e.g. "1 opakowanie" + "0.5 opakowania" or "do smaku" + "1 szczypta")
+          // Append as a distinct part. This isn't ideal for a clean list but prevents data loss.
+          // A more sophisticated approach might involve unit conversion or smarter parsing.
+          existingItem.quantity = `${existingItem.quantity}; ${recipeIngredientOriginalQuantityStr}`;
+          if (recipeIngredientUnit && !existingItem.quantity.includes(recipeIngredientUnit)) {
+            existingItem.quantity += ` ${recipeIngredientUnit}`;
+          }
         }
-      } else {
+        if (!existingItem.recipeSources.includes(recipe.title)) {
+            existingItem.recipeSources.push(recipe.title);
+        }
+      } else { // New item for the list
+        let initialFullQuantityString;
+        if (!isNaN(baseNumericValue)) { // If original quantity is numeric or starts with a number
+          initialFullQuantityString = `${baseNumericValue * servingsMultiplier} ${recipeIngredientUnit}`;
+        } else { // Non-numeric quantity string like "do smaku", "1 puszka"
+          initialFullQuantityString = recipeIngredientOriginalQuantityStr;
+          // If unit is provided and not already part of the quantity string, append it
+          if (recipeIngredientUnit && !initialFullQuantityString.toLowerCase().includes(recipeIngredientUnit.toLowerCase())) {
+            initialFullQuantityString = `${initialFullQuantityString} ${recipeIngredientUnit}`;
+          }
+        }
+        
         aggregatedIngredients[key] = {
           id: crypto.randomUUID(),
           name: ingredient.name,
-          quantity: `${quantityToAdd || ingredient.quantity} ${ingredient.unit}`, // If quantityToAdd is 0, use original string
-          unit: ingredient.unit,
+          quantity: initialFullQuantityString.trim(), // Ensure no leading/trailing spaces
+          unit: recipeIngredientUnit, // Store unit for metadata/grouping
           category_id: recipe.category_id, 
-          category_name: recipe.category_name || 'Inne', // Use mapped category_name
+          category_name: recipe.category_name || 'Inne',
           checked: false,
           recipeSources: [recipe.title]
         };
@@ -62,9 +71,8 @@ export const generateShoppingList = (weeklyPlan: WeeklyPlan, recipes: Recipe[]):
     });
   });
 
-  // Group by category_name for display
+  // Sort for display: by category_name, then by item name
   const groupedAndSortedList = Object.values(aggregatedIngredients).sort((a, b) => {
-    // Simple sort by category name, then item name
     const catComp = (a.category_name || 'Inne').localeCompare(b.category_name || 'Inne');
     if (catComp !== 0) return catComp;
     return a.name.localeCompare(b.name);

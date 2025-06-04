@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
@@ -10,10 +9,9 @@ import { PrintIcon, TrashIcon, PlusIcon } from '../../constants.tsx';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
-// RECIPE_CATEGORIES_OPTIONS is removed, we'll use fetched categories
 
 const ShoppingListDashboard: React.FC = () => {
-  const { weeklyPlan, recipes, recipeCategories, isLoadingCategories } = useData(); // Added recipeCategories
+  const { weeklyPlan, recipes, recipeCategories, isLoadingCategories, units, getAllIngredientNames } = useData();
   const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<Partial<ShoppingListItem> | null>(null);
@@ -44,6 +42,10 @@ const ShoppingListDashboard: React.FC = () => {
   };
 
   const handlePrintList = () => {
+    if (shoppingList.length === 0) {
+        alert("Lista zakupów jest pusta. Nie ma czego drukować.");
+        return;
+    }
     navigate('/lista-zakupow/drukuj', { state: { shoppingListForPrint: shoppingList } });
   };
   
@@ -73,24 +75,31 @@ const ShoppingListDashboard: React.FC = () => {
   };
 
   const handleSaveItem = () => {
-    if (!itemToEdit || !itemToEdit.name || !itemToEdit.quantity) {
+    if (!itemToEdit || !itemToEdit.name?.trim() || !itemToEdit.quantity?.trim()) {
         alert("Nazwa i ilość są wymagane.");
         return;
     }
     
-    // Ensure category_name is set if category_id is present
     let finalItemData = { ...itemToEdit };
     if (finalItemData.category_id) {
         const cat = recipeCategories.find(c => c.id === finalItemData.category_id);
         finalItemData.category_name = cat ? cat.name : 'Inne';
     } else {
-        finalItemData.category_name = 'Inne'; // Default if no category_id
+        finalItemData.category_name = 'Inne'; 
+    }
+
+    // Ensure quantity is just the string, unit is separate for consistency if user entered it that way
+    // However, generateShoppingList now creates quantity as "100 g" and unit as "g".
+    // For manual add, user might type "100" in quantity and "g" in unit.
+    // We should combine them into the quantity string if unit is provided.
+    if (finalItemData.quantity && finalItemData.unit && !finalItemData.quantity.toLowerCase().includes(finalItemData.unit.toLowerCase())) {
+        finalItemData.quantity = `${finalItemData.quantity.trim()} ${finalItemData.unit.trim()}`;
     }
 
 
-    if (itemToEdit.id && itemToEdit.id !== crypto.randomUUID()) { // Editing existing (check if ID is not a placeholder)
+    if (itemToEdit.id && itemToEdit.id !== crypto.randomUUID() && shoppingList.some(i => i.id === itemToEdit.id)) { 
         setShoppingList(prev => prev.map(i => i.id === finalItemData!.id ? finalItemData as ShoppingListItem : i));
-    } else { // Adding new
+    } else { 
         setShoppingList(prev => [...prev, { ...finalItemData, id: crypto.randomUUID() } as ShoppingListItem]);
     }
     setIsModalOpen(false);
@@ -99,23 +108,28 @@ const ShoppingListDashboard: React.FC = () => {
 
   const modalCategoryOptions = useMemo(() => {
     return [
-        { value: "", label: "Brak (Inne)"}, // Option for no category or general
+        { value: "", label: "Brak (Inne)"}, 
         ...recipeCategories.map(cat => ({ value: cat.id, label: cat.name }))
     ];
   }, [recipeCategories]);
 
+  const availableUnitsForDatalist = useMemo(() => units.map(u => u.name), [units]);
+  const availableIngredientNamesForDatalist = useMemo(() => getAllIngredientNames(), [getAllIngredientNames]);
+
 
   const categoriesForDisplay = Array.from(new Set(shoppingList.map(item => item.category_name || 'Inne')))
     .sort((a, b) => {
-        // Attempt to sort by original category order if possible, otherwise alphabetically
         const findOrder = (catName: string) => recipeCategories.findIndex(rc => rc.name === catName);
         const orderA = findOrder(a);
         const orderB = findOrder(b);
 
+        if (a === 'Inne' && b !== 'Inne') return 1; 
+        if (b === 'Inne' && a !== 'Inne') return -1;
+
         if (orderA !== -1 && orderB !== -1) return orderA - orderB;
-        if (orderA !== -1) return -1; // Known categories first
+        if (orderA !== -1) return -1; 
         if (orderB !== -1) return 1;
-        return a.localeCompare(b); // Fallback to alphabetical for "Inne" or unknown
+        return a.localeCompare(b); 
     });
 
   return (
@@ -130,7 +144,7 @@ const ShoppingListDashboard: React.FC = () => {
           <Button onClick={handleClearList} variant="danger" size="sm" leftIcon={<TrashIcon />}>
             Wyczyść listę
           </Button>
-          <Button onClick={handlePrintList} variant="primary" size="sm" leftIcon={<PrintIcon />}>
+          <Button onClick={handlePrintList} variant="primary" size="sm" leftIcon={<PrintIcon />} disabled={shoppingList.length === 0}>
             Drukuj listę
           </Button>
         </div>
@@ -161,12 +175,28 @@ const ShoppingListDashboard: React.FC = () => {
           ))}
         </div>
       )}
-      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setItemToEdit(null); }} title={itemToEdit?.id && itemToEdit.id !== crypto.randomUUID() ? "Edytuj Produkt" : "Dodaj Produkt Ręcznie"}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setItemToEdit(null); }} title={itemToEdit?.id && shoppingList.some(i => i.id === itemToEdit.id) ? "Edytuj Produkt" : "Dodaj Produkt Ręcznie"}>
         {itemToEdit && (
             <div className="space-y-4">
-                <Input label="Nazwa produktu" value={itemToEdit.name || ''} onChange={e => setItemToEdit(prev => ({...prev!, name: e.target.value}))} required />
-                <Input label="Ilość" value={itemToEdit.quantity || ''} onChange={e => setItemToEdit(prev => ({...prev!, quantity: e.target.value}))} required />
-                <Input label="Jednostka" value={itemToEdit.unit || ''} onChange={e => setItemToEdit(prev => ({...prev!, unit: e.target.value}))} />
+                <Input 
+                    label="Nazwa produktu" 
+                    value={itemToEdit.name || ''} 
+                    onChange={e => setItemToEdit(prev => ({...prev!, name: e.target.value}))} 
+                    required 
+                    list="shoppinglist-item-names"
+                />
+                <Input 
+                    label="Ilość (np. 100, 1 opakowanie)" 
+                    value={itemToEdit.quantity || ''} 
+                    onChange={e => setItemToEdit(prev => ({...prev!, quantity: e.target.value}))} 
+                    required 
+                />
+                <Input 
+                    label="Jednostka (np. g, szt, ml)" 
+                    value={itemToEdit.unit || ''} 
+                    onChange={e => setItemToEdit(prev => ({...prev!, unit: e.target.value}))} 
+                    list="shoppinglist-item-units"
+                />
                 <Select 
                     label="Kategoria (opcjonalnie)" 
                     options={modalCategoryOptions} 
@@ -190,6 +220,12 @@ const ShoppingListDashboard: React.FC = () => {
             </div>
         )}
       </Modal>
+      <datalist id="shoppinglist-item-units">
+        {availableUnitsForDatalist.map(unitName => <option key={unitName} value={unitName} />)}
+      </datalist>
+      <datalist id="shoppinglist-item-names">
+        {availableIngredientNamesForDatalist.map(name => <option key={name} value={name} />)}
+      </datalist>
     </div>
   );
 };

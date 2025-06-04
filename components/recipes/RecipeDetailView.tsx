@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
@@ -13,20 +12,16 @@ interface RecipeDetailViewProps {
 
 const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
   const { id } = useParams<{ id: string }>();
-  const { getRecipeById, deleteRecipe, isLoadingRecipes } = useData(); // Added deleteRecipe, isLoadingRecipes
+  const { getRecipeById, deleteRecipe, isLoadingRecipes } = useData(); 
   const navigate = useNavigate();
-  const [recipe, setRecipe] = useState<Recipe | null | undefined>(undefined); // undefined for initial, null if not found
+  const [recipe, setRecipe] = useState<Recipe | null | undefined>(undefined); 
 
   useEffect(() => {
-    if (id && !isLoadingRecipes) { // Ensure recipes are loaded before trying to get one
+    if (id && !isLoadingRecipes) { 
       const foundRecipe = getRecipeById(id);
-      setRecipe(foundRecipe || null); // Set to null if not found after loading
+      setRecipe(foundRecipe || null); 
       if (foundRecipe && printMode) {
         setTimeout(() => window.print(), 500);
-      } else if (!foundRecipe && !printMode) {
-        // Optionally navigate away if recipe not found and not in print mode
-        // console.warn(`Recipe with id ${id} not found.`);
-        // navigate('/przepisy', { replace: true });
       }
     }
   }, [id, getRecipeById, navigate, printMode, isLoadingRecipes]);
@@ -56,19 +51,19 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
   };
 
   const handleEdit = () => {
-    // Navigate to RecipeDashboard and pass recipe.id in state to trigger edit modal
     navigate('/przepisy', { state: { recipeIdForEdit: recipe.id } });
   };
 
   const handleDelete = async () => {
     if (window.confirm(`Czy na pewno chcesz usunąć przepis "${recipe.title}"? Tej operacji nie można cofnąć.`)) {
       await deleteRecipe(recipe.id);
-      navigate('/przepisy'); // Navigate back to list after deletion
+      navigate('/przepisy'); 
     }
   };
 
-  const formattedCategoryPrefix = formatPrefix(recipe.category_code_prefix);
-  const formattedRecipePrefix = formatPrefix(recipe.recipe_internal_prefix);
+  const formattedCategoryPrefix = recipe.category_id ? formatPrefix(recipe.category_code_prefix) : null;
+  const formattedRecipePrefix = recipe.category_id ? formatPrefix(recipe.recipe_internal_prefix) : formatPrefix(recipe.recipe_internal_prefix);
+
 
   return (
     <div className={`p-4 md:p-8 ${printMode ? 'print-container' : 'bg-white shadow-xl rounded-lg'}`}>
@@ -95,22 +90,28 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
                   title="Usuń przepis">
             Usuń
           </Button>
-          <Button onClick={handlePrint} variant="primary" size="sm" leftIcon={<PrintIcon />}>
-            Drukuj
-          </Button>
+          {!printMode && (
+            <Button onClick={handlePrint} variant="primary" size="sm" leftIcon={<PrintIcon />}>
+                Drukuj
+            </Button>
+          )}
         </div>
       </div>
 
       <article className="prose prose-slate max-w-none lg:prose-xl">
         <header className="mb-8 border-b pb-4">
           <h1 className="text-3xl md:text-4xl font-bold text-sky-700">
-             <span className="font-mono text-2xl md:text-3xl text-slate-500 mr-2">{formattedCategoryPrefix}.{formattedRecipePrefix}</span>
             {recipe.title}
           </h1>
-          <div className="mt-2 text-sm text-slate-600 flex flex-col sm:flex-row flex-wrap gap-x-4 gap-y-1">
-            <span><strong>Kategoria:</strong> {recipe.category_name || 'Brak'}</span>
+          {(formattedCategoryPrefix !== null || recipe.category_id === null) && (
+             <p className="font-mono text-lg md:text-xl text-slate-500 mt-1">
+                {recipe.category_id ? `${formattedCategoryPrefix}.${formattedRecipePrefix}` : `---.${formattedRecipePrefix}`}
+             </p>
+          )}
+          <div className="mt-3 text-sm text-slate-600 flex flex-col sm:flex-row flex-wrap gap-x-4 gap-y-1">
+            <span><strong>Kategoria:</strong> {recipe.category_name || 'Brak kategorii'}</span>
             <span><strong>Czas przygotowania:</strong> {recipe.prep_time}</span>
-            {recipe.calories && <span><strong>Kaloryczność:</strong> {recipe.calories} kcal</span>}
+            {recipe.calories !== null && typeof recipe.calories !== 'undefined' && <span><strong>Kaloryczność:</strong> {recipe.calories} kcal</span>}
             {recipe.tags.length > 0 && (
               <span><strong>Tagi:</strong> {recipe.tags.join(', ')}</span>
             )}

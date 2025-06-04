@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { PlannedMeal } from '../../types';
 import { useData } from '../../contexts/DataContext';
@@ -26,14 +25,16 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
         {recipe?.title || meal.custom_meal_name || 'Niezdefiniowany posiłek'}
       </h4>
       <p className="text-xs text-slate-500">{meal.meal_type}</p>
-      {meal.person && <p className="text-xs text-slate-500">Dla: {meal.person}</p>}
-      {/* Servings removed */}
-      {/* <p className="text-xs text-slate-500">Dla: {meal.servings} {meal.servings === 1 ? 'osoby' : 'osób'}</p> */}
+      {meal.persons && meal.persons.length > 0 && (
+        <p className="text-xs text-slate-500 truncate" title={`Dla: ${meal.persons.join(', ')}`}>
+            Dla: {meal.persons.join(', ')}
+        </p>
+      )}
       <div className="mt-2 flex justify-end space-x-1">
-        <Button variant="ghost" size="sm" onClick={() => onEdit(meal)} className="p-1">
+        <Button variant="ghost" size="sm" onClick={() => onEdit(meal)} className="p-1" aria-label="Edytuj posiłek">
           <EditIcon className="w-4 h-4" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={handleDelete} className="p-1 text-red-500 hover:text-red-700">
+        <Button variant="ghost" size="sm" onClick={handleDelete} className="p-1 text-red-500 hover:text-red-700" aria-label="Usuń posiłek">
           <TrashIcon className="w-4 h-4" />
         </Button>
       </div>
