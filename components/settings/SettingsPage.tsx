@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import Card from '../ui/Card';
 import { useData } from '../../contexts/DataContext';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { PlusIcon, TrashIcon, EditIcon } from '../../constants.tsx';
-import { Unit, RecipeCategoryDB, Person } from '../../types';
+import { Unit, RecipeCategoryDB, Person, ArchivedPlan, FullExportData } from '../../types';
 import Modal from '../ui/Modal';
 
 const SettingsPage: React.FC = () => {
@@ -12,14 +13,14 @@ const SettingsPage: React.FC = () => {
     units, addUnit, deleteUnit, isLoadingUnits, errorUnits,
     recipeCategories, addRecipeCategory, updateRecipeCategory, deleteRecipeCategory, 
     isLoadingCategories, errorCategories, refreshCategories,
-    persons, addPerson, updatePerson, deletePerson, isLoadingPersons, errorPersons, refreshPersons
+    persons, addPerson, updatePerson, deletePerson, isLoadingPersons, errorPersons, refreshPersons,
+    archivedPlans, restorePlan, deleteArchivedPlan, isLoadingArchivedPlans, errorArchivedPlans, refreshArchivedPlans,
+    exportAllData, importAllData, loadInitialData
   } = useData();
   
-  // Unit Management State
   const [newUnitName, setNewUnitName] = useState('');
   const [isAddingUnit, setIsAddingUnit] = useState(false);
 
-  // Category Management State
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [categoryToEdit, setCategoryToEdit] = useState<RecipeCategoryDB | null>(null);
   const [currentCategoryName, setCurrentCategoryName] = useState('');
@@ -27,13 +28,21 @@ const SettingsPage: React.FC = () => {
   const [categoryFormError, setCategoryFormError] = useState('');
   const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
 
-  // Person Management State
   const [isPersonModalOpen, setIsPersonModalOpen] = useState(false);
   const [personToEdit, setPersonToEdit] = useState<Person | null>(null);
   const [currentPersonName, setCurrentPersonName] = useState('');
   const [personFormError, setPersonFormError] = useState('');
   const [isSubmittingPerson, setIsSubmittingPerson] = useState(false);
 
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+
+  useEffect(() => { // Refresh archived plans when page is mounted
+    refreshArchivedPlans();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddUnit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,7 +89,6 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  // Person Management Functions
   const openNewPersonModal = () => {
     setPersonToEdit(null); setCurrentPersonName('');
     setPersonFormError(''); setIsPersonModalOpen(true);
@@ -98,17 +106,88 @@ const SettingsPage: React.FC = () => {
     try {
       let success = personToEdit ? await updatePerson(personToEdit.id, currentPersonName.trim()) : await addPerson(currentPersonName.trim());
       if (success) { setIsPersonModalOpen(false); refreshPersons(); }
-      // Error alerts are handled in DataContext for unique name constraint
     } finally { setIsSubmittingPerson(false); }
   };
 
   const handleDeletePerson = async (personId: string, personName: string) => {
     if (window.confirm(`Czy na pewno chcesz usunąć osobę "${personName}"? Zostanie ona również usunięta ze wszystkich przepisów i zaplanowanych posiłków.`)) {
       await deletePerson(personId); 
-      refreshPersons(); // DataContext handles refreshing related data (recipes, planner)
+      refreshPersons(); 
     }
   };
 
+  const handleRestorePlan = async (planId: string, planName: string) => {
+    if (window.confirm(`Czy na pewno chcesz przywrócić plan "${planName}"? Obecny plan tygodniowy zostanie nadpisany.`)) {
+      await restorePlan(planId);
+    }
+  };
+
+  const handleDeleteArchivedPlan = async (planId: string, planName: string) => {
+      if (window.confirm(`Czy na pewno chcesz usunąć zarchiwizowany plan "${planName}"? Tej operacji nie można cofnąć.`)) {
+          await deleteArchivedPlan(planId);
+      }
+  };
+
+  const downloadJson = (data: object, filename: string) => {
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportData = async () => {
+    setIsExporting(true);
+    const dataToExport = await exportAllData();
+    setIsExporting(false);
+    if (dataToExport) {
+      downloadJson(dataToExport, `planer-posilkow-export-${new Date().toISOString().split('T')[0]}.json`);
+      alert("Dane zostały pomyślnie wyeksportowane.");
+    } else {
+      alert("Wystąpił błąd podczas eksportu danych.");
+    }
+  };
+
+  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') throw new Error("Nie udało się odczytać pliku.");
+        const jsonData = JSON.parse(text) as FullExportData;
+        
+        // Basic validation of jsonData structure (can be improved)
+        if (!jsonData || typeof jsonData !== 'object' || !jsonData.recipes) {
+            throw new Error("Plik JSON ma nieprawidłową strukturę lub jest pusty.");
+        }
+
+        const success = await importAllData(jsonData);
+        if (success) {
+          alert("Dane zostały pomyślnie zaimportowane. Aplikacja zostanie odświeżona.");
+          await loadInitialData(); // Reload all data after import
+        }
+        // Errors are handled within importAllData with alerts
+      } catch (error) {
+        console.error("Error processing import file:", error);
+        alert(`Błąd podczas importu: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) { // Reset file input
+          fileInputRef.current.value = "";
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div className="space-y-8">
@@ -244,9 +323,79 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
+      {/* Archived Plans Management Card */}
+      <Card>
+        <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarchiwizowane Plany Posiłków</h2>
+        {isLoadingArchivedPlans && <p className="text-slate-500">Ładowanie zarchiwizowanych planów...</p>}
+        {errorArchivedPlans && <p className="text-red-500">Błąd ładowania zarchiwizowanych planów: {errorArchivedPlans.message}</p>}
+        {!isLoadingArchivedPlans && !errorArchivedPlans && archivedPlans.length === 0 && (
+            <p className="text-slate-500">Brak zarchiwizowanych planów.</p>
+        )}
+        {!isLoadingArchivedPlans && archivedPlans.length > 0 && (
+            <div className="max-h-96 overflow-y-auto border rounded-lg">
+                <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                        <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Nazwa Archiwum</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data Archiwizacji</th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Akcje</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200">
+                        {archivedPlans.map((plan: ArchivedPlan) => (
+                            <tr key={plan.id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{plan.name}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{new Date(plan.archived_at).toLocaleDateString()}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                    <Button variant="ghost" size="sm" onClick={() => handleRestorePlan(plan.id, plan.name)} title="Przywróć plan">
+                                        <span className="hidden sm:inline">Przywróć</span>
+                                    </Button>
+                                    <Button variant="danger" size="sm" onClick={() => handleDeleteArchivedPlan(plan.id, plan.name)} leftIcon={<TrashIcon className="w-4 h-4"/>} title="Usuń archiwum">
+                                         <span className="hidden sm:inline">Usuń</span>
+                                    </Button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        )}
+      </Card>
+
+      {/* Data Import/Export Card */}
+      <Card>
+        <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarządzanie Danymi (Import/Eksport)</h2>
+        <div className="space-y-4">
+            <div>
+                <h3 className="text-md font-medium text-slate-700 mb-1">Eksport Danych</h3>
+                <p className="text-sm text-slate-500 mb-2">Wyeksportuj wszystkie dane aplikacji (przepisy, plany, ustawienia) do pliku JSON. Może to służyć jako kopia zapasowa lub do przeniesienia danych.</p>
+                <Button onClick={handleExportData} variant="primary" isLoading={isExporting} disabled={isExporting}>
+                    Eksportuj Wszystkie Dane
+                </Button>
+            </div>
+            <hr/>
+            <div>
+                <h3 className="text-md font-medium text-slate-700 mb-1">Import Danych</h3>
+                <p className="text-sm text-slate-500 mb-2">
+                    <strong className="text-red-600">Uwaga:</strong> Zaimportowanie danych z pliku JSON spowoduje <strong className="underline">USUNIĘCIE</strong> wszystkich obecnych danych w aplikacji i zastąpienie ich danymi z pliku. Ta operacja jest nieodwracalna. Upewnij się, że wybierasz prawidłowy plik.
+                </p>
+                <input 
+                    type="file" 
+                    accept=".json" 
+                    onChange={handleImportData}
+                    ref={fileInputRef}
+                    className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 disabled:opacity-50"
+                    disabled={isImporting}
+                />
+                {isImporting && <p className="text-sm text-sky-600 mt-2">Przetwarzanie pliku importu...</p>}
+            </div>
+        </div>
+      </Card>
+
+
       <Card><h2 className="text-xl font-semibold text-sky-700 mb-4">Informacje o Aplikacji</h2>
         <p className="text-slate-600"><strong>Nazwa:</strong> Rodzinny Planer Posiłków</p>
-        <p className="text-slate-600"><strong>Wersja:</strong> 1.3.0 (Demo)</p>
+        <p className="text-slate-600"><strong>Wersja:</strong> 1.4.0 (Archiving & Import/Export)</p>
       </Card>
 
       {/* Category Modal */}

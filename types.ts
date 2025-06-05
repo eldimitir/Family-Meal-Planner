@@ -25,10 +25,14 @@ export interface Ingredient {
   unit: string; // Will now be text, suggested from Units table
 }
 
+// For Recipe export/import, ingredients are nested differently
+export interface RecipeDbIngredient extends Omit<Ingredient, 'id' | 'recipe_id'> {}
+
+
 export interface Recipe {
   id: string; // UUID from Supabase
   title: string;
-  ingredients: Ingredient[];
+  ingredients: Ingredient[]; // Used in UI and for form
   instructions: string;
   prep_time: string;
   category_id: string | null; // Foreign key to RecipeCategoryDB, can be null if category deleted
@@ -42,6 +46,12 @@ export interface Recipe {
   created_at?: string; // ISO date string from Supabase
 }
 
+// For export/import, the recipe structure might be slightly different for DB operations
+export interface RecipeForExport extends Omit<Recipe, 'ingredients' | 'category_name' | 'category_code_prefix' | 'persons_names'> {
+  db_ingredients: RecipeDbIngredient[]; // Store ingredients as they are in the DB (without their own ID)
+}
+
+
 export interface PlannedMeal {
   id: string; // UUID from Supabase
   day: string;
@@ -52,6 +62,10 @@ export interface PlannedMeal {
   persons_names?: string[] | null; // Populated (derived) names of persons for this meal
   created_at?: string; // ISO date string from Supabase
 }
+
+// For export/import, exclude derived fields and 'id' for insertion
+export interface PlannedMealForExport extends Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names'> {}
+
 
 export interface WeeklyPlan {
   [day: string]: PlannedMeal[];
@@ -99,4 +113,28 @@ export interface WeeklyMealTypeCalorieSummary {
     [day: string]: number;
   };
   grandTotal: number; // Grand total for the week across all meal types
+}
+
+// Represents a meal as stored within an archived plan (without live id, created_at, derived persons_names)
+export interface ArchivedMealData extends Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names'> {}
+
+// For Archiving Meal Plans
+export interface ArchivedPlan {
+    id: string; // UUID from Supabase
+    name: string;
+    plan_data: Record<DayOfWeek, ArchivedMealData[]>; // The actual weekly plan data, using ArchivedMealData
+    archived_at: string; // ISO date string from Supabase
+}
+
+// For export/import, exclude 'id' for insertion
+export interface ArchivedPlanForExport extends Omit<ArchivedPlan, 'id' | 'archived_at'> {}
+
+// For Full Data Export/Import
+export interface FullExportData {
+    recipeCategories: RecipeCategoryDB[];
+    units: Unit[];
+    persons: Person[];
+    recipes: RecipeForExport[]; // Recipes with nested DB-style ingredients
+    plannedMeals: PlannedMealForExport[];
+    archivedPlans?: ArchivedPlanForExport[]; // Optional, if archiving is used
 }

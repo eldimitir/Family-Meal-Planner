@@ -1,16 +1,21 @@
+
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
 import { DayOfWeek, PlannedMeal, WeeklyCalorieTableSummary, PersonDailyCalorieSummary, WeeklyMealTypeCalorieSummary, MealTypeDailyCalorieSummary } from '../../types';
 import DayColumn from './DayColumn';
 import AddMealModal from './AddMealModal';
+import Modal from '../ui/Modal';
+import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { DAYS_OF_WEEK, MEAL_TYPES } from '../../constants';
-import { PrintIcon, TrashIcon, EyeIcon } from '../../constants.tsx';
+import { PrintIcon, TrashIcon, EyeIcon, PlusIcon } from '../../constants.tsx'; // Added PlusIcon for archive
 
 const MealPlannerDashboard: React.FC = () => {
-  const { weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons } = useData();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, archiveCurrentPlan, isLoadingArchivedPlans } = useData();
+  const [isAddMealModalOpen, setIsAddMealModalOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [archiveName, setArchiveName] = useState('');
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | null>(null);
   const [mealToEdit, setMealToEdit] = useState<PlannedMeal | undefined>(undefined);
   const navigate = useNavigate();
@@ -18,17 +23,17 @@ const MealPlannerDashboard: React.FC = () => {
   const handleAddMeal = (day: DayOfWeek) => {
     setSelectedDay(day);
     setMealToEdit(undefined);
-    setIsModalOpen(true);
+    setIsAddMealModalOpen(true);
   };
 
   const handleEditMeal = (meal: PlannedMeal) => {
     setSelectedDay(meal.day as DayOfWeek);
     setMealToEdit(meal);
-    setIsModalOpen(true);
+    setIsAddMealModalOpen(true);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
+  const handleCloseAddMealModal = () => {
+    setIsAddMealModalOpen(false);
     setSelectedDay(null);
     setMealToEdit(undefined);
   };
@@ -43,6 +48,27 @@ const MealPlannerDashboard: React.FC = () => {
     }
   };
 
+  const handleOpenArchiveModal = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setArchiveName(`Plan - ${today}`);
+    setIsArchiveModalOpen(true);
+  };
+
+  const handleArchivePlan = async () => {
+    if (!archiveName.trim()) {
+      alert("Nazwa archiwum jest wymagana.");
+      return;
+    }
+    const success = await archiveCurrentPlan(archiveName.trim());
+    if (success) {
+      alert(`Plan "${archiveName.trim()}" został zarchiwizowany.`);
+      setIsArchiveModalOpen(false);
+      setArchiveName('');
+    } else {
+      alert("Nie udało się zarchiwizować planu.");
+    }
+  };
+
   const weeklyCalorieSummaryTable = useMemo((): WeeklyCalorieTableSummary => {
     const summary: WeeklyCalorieTableSummary = {
       persons: {},
@@ -53,28 +79,23 @@ const MealPlannerDashboard: React.FC = () => {
     const allPlannedMeals = Object.values(weeklyPlan).flat();
     const uniquePersonNamesInPlan = new Set<string>();
 
-    // Populate uniquePersonNamesInPlan from planned meal's persons_names or system persons if meal applies to all
-     allPlannedMeals.forEach(pm => {
+    allPlannedMeals.forEach(pm => {
         if (pm.persons_names && pm.persons_names.length > 0) {
             pm.persons_names.forEach(name => uniquePersonNamesInPlan.add(name));
-        } else if (pm.recipe_id) { // If meal has a recipe but no specific persons, it might apply to all
+        } else if (pm.recipe_id) { 
             const recipe = getRecipeById(pm.recipe_id);
-            if(recipe) { // If recipe exists
-                 // If recipe has persons, add them. If not, it means it's for all system persons in this context.
+            if(recipe) {
                 if (recipe.persons_names && recipe.persons_names.length > 0) {
                      recipe.persons_names.forEach(name => uniquePersonNamesInPlan.add(name));
-                } else { // Recipe has no persons, assume it applies to all system persons for calorie count
+                } else { 
                     allSystemPersons.forEach(p => uniquePersonNamesInPlan.add(p.name));
                 }
             }
-        } else if (pm.custom_meal_name) { // Custom meal without specific persons, applies to all system persons
+        } else if (pm.custom_meal_name) { 
              allSystemPersons.forEach(p => uniquePersonNamesInPlan.add(p.name));
         }
     });
 
-
-    // If no persons are defined anywhere (neither in recipes, nor in planned meals, nor in system) 
-    // but there are recipes with calories, sum under "Ogółem"
     const generalPersonName = "Ogółem (brak przypisanych osób)";
     if (uniquePersonNamesInPlan.size === 0 && allPlannedMeals.some(pm => pm.recipe_id && getRecipeById(pm.recipe_id)?.calories)) {
         summary.persons[generalPersonName] = DAYS_OF_WEEK.reduce((acc, day) => ({ ...acc, [day]: 0 }), { total: 0 } as PersonDailyCalorieSummary);
@@ -89,17 +110,16 @@ const MealPlannerDashboard: React.FC = () => {
             if (pm.recipe_id) {
                 const recipe = getRecipeById(pm.recipe_id);
                 if (recipe?.calories && recipe.calories > 0) {
-                    const caloriesPerServing = recipe.calories; // Assume calories are per serving of the recipe
+                    const caloriesPerServing = recipe.calories; 
 
-                    if (pm.persons_names && pm.persons_names.length > 0) { // Meal assigned to specific persons
+                    if (pm.persons_names && pm.persons_names.length > 0) { 
                         pm.persons_names.forEach(personName => {
                             if (summary.persons[personName]) {
                                 summary.persons[personName][day] = (summary.persons[personName][day] || 0) + caloriesPerServing;
                                 summary.persons[personName].total += caloriesPerServing;
                             }
                         });
-                    } else { // Meal not assigned to specific persons (could be from recipe with no persons, or custom meal logic if it had calories)
-                        // Add to all unique persons in plan or to "Ogółem"
+                    } else { 
                         if (uniquePersonNamesInPlan.size > 0) {
                             uniquePersonNamesInPlan.forEach(personName => {
                                 if (summary.persons[personName]) {
@@ -107,23 +127,20 @@ const MealPlannerDashboard: React.FC = () => {
                                     summary.persons[personName].total += caloriesPerServing;
                                 }
                             });
-                        } else if (summary.persons[generalPersonName]) { // Add to "Ogółem"
+                        } else if (summary.persons[generalPersonName]) { 
                              summary.persons[generalPersonName][day] = (summary.persons[generalPersonName][day] || 0) + caloriesPerServing;
                              summary.persons[generalPersonName].total += caloriesPerServing;
                         }
                     }
-                    // Add to daily and grand totals (once per meal instance)
                     summary.dailyTotals[day] = (summary.dailyTotals[day] || 0) + caloriesPerServing;
                     summary.grandTotal += caloriesPerServing;
                 }
             }
         });
     });
-    // If "Ogółem" exists and has 0 total, but grandTotal > 0, remove "Ogółem" if other persons exist.
     if (summary.persons[generalPersonName]?.total === 0 && summary.grandTotal > 0 && Object.keys(summary.persons).length > 1) {
         delete summary.persons[generalPersonName];
     }
-
 
     return summary;
   }, [weeklyPlan, getRecipeById, allRecipes, allSystemPersons]);
@@ -158,16 +175,20 @@ const MealPlannerDashboard: React.FC = () => {
     return summary;
   }, [weeklyPlan, getRecipeById]);
 
+  const isPlanEmpty = useMemo(() => Object.values(weeklyPlan).every(dayMeals => dayMeals.length === 0), [weeklyPlan]);
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-bold text-slate-800">Planer Posiłków</h1>
         <div className="flex gap-2 flex-wrap">
-            <Button onClick={handleClearPlan} variant="danger" size="sm" leftIcon={<TrashIcon />}>
+            <Button onClick={handleOpenArchiveModal} variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} disabled={isPlanEmpty || isLoadingArchivedPlans}>
+                Archiwizuj Plan
+            </Button>
+            <Button onClick={handleClearPlan} variant="danger" size="sm" leftIcon={<TrashIcon />} disabled={isPlanEmpty}>
                 Wyczyść Plan
             </Button>
-            <Button onClick={handleShowPlan} variant="primary" size="sm" leftIcon={<EyeIcon />}>
+            <Button onClick={handleShowPlan} variant="primary" size="sm" leftIcon={<EyeIcon />} disabled={isPlanEmpty}>
                 Pokaż Plan Tygodnia
             </Button>
         </div>
@@ -187,12 +208,28 @@ const MealPlannerDashboard: React.FC = () => {
 
       {selectedDay && (
         <AddMealModal
-          isOpen={isModalOpen}
-          onClose={handleCloseModal}
+          isOpen={isAddMealModalOpen}
+          onClose={handleCloseAddMealModal}
           day={selectedDay}
           mealToEdit={mealToEdit}
         />
       )}
+
+      <Modal isOpen={isArchiveModalOpen} onClose={() => setIsArchiveModalOpen(false)} title="Archiwizuj Plan Posiłków">
+        <div className="space-y-4">
+          <Input
+            label="Nazwa archiwum"
+            value={archiveName}
+            onChange={(e) => setArchiveName(e.target.value)}
+            placeholder="Np. Plan Wakacyjny Sierpień"
+            required
+          />
+          <div className="flex justify-end space-x-2">
+            <Button variant="secondary" onClick={() => setIsArchiveModalOpen(false)}>Anuluj</Button>
+            <Button variant="primary" onClick={handleArchivePlan} isLoading={isLoadingArchivedPlans} disabled={!archiveName.trim()}>Zarchiwizuj</Button>
+          </div>
+        </div>
+      </Modal>
       
       <div className="mt-8 p-4 sm:p-6 bg-white rounded-lg shadow overflow-x-auto">
         <h2 className="text-2xl font-semibold text-slate-700 mb-4">Podsumowanie Kaloryczności Tygodnia (kcal) - Na Osobę</h2>

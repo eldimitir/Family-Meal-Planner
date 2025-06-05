@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
@@ -16,15 +17,15 @@ import ShoppingListPrintView from './components/shoppingList/ShoppingListPrintVi
 const ProtectedRoute: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { 
-    isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, isLoadingPersons,
-    errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons 
+    isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, isLoadingPersons, isLoadingArchivedPlans,
+    errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons, errorArchivedPlans 
   } = useData(); 
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isLoadingRecipes || isLoadingPlanner || isLoadingCategories || isLoadingUnits || isLoadingPersons) {
+  if (isLoadingRecipes || isLoadingPlanner || isLoadingCategories || isLoadingUnits || isLoadingPersons || isLoadingArchivedPlans) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-100">
         <div className="text-xl font-semibold text-slate-700">Ładowanie danych...</div>
@@ -32,7 +33,7 @@ const ProtectedRoute: React.FC = () => {
     );
   }
 
-  const anyError = errorRecipes || errorPlanner || errorCategories || errorUnits || errorPersons;
+  const anyError = errorRecipes || errorPlanner || errorCategories || errorUnits || errorPersons || errorArchivedPlans;
   if (anyError) {
      return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-4">
@@ -43,6 +44,7 @@ const ProtectedRoute: React.FC = () => {
         {errorCategories && <p className="text-xs text-red-500 mt-1">Błąd kategorii: {errorCategories.message}</p>}
         {errorUnits && <p className="text-xs text-red-500 mt-1">Błąd jednostek: {errorUnits.message}</p>}
         {errorPersons && <p className="text-xs text-red-500 mt-1">Błąd osób: {errorPersons.message}</p>}
+        {errorArchivedPlans && <p className="text-xs text-red-500 mt-1">Błąd zarchiwizowanych planów: {errorArchivedPlans.message}</p>}
       </div>
     );
   }

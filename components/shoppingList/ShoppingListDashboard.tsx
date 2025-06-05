@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
@@ -46,8 +47,13 @@ const ShoppingListDashboard: React.FC = () => {
         alert("Lista zakupów jest pusta. Nie ma czego drukować.");
         return;
     }
-    // Sort the list alphabetically by name before sending to print view
-    const sortedList = [...shoppingList].sort((a, b) => a.name.localeCompare(b.name));
+    const uncheckedItems = shoppingList.filter(item => !item.checked);
+    if (uncheckedItems.length === 0) {
+        alert("Wszystkie produkty na liście są zaznaczone lub lista jest pusta (po odfiltrowaniu). Nie ma czego drukować.");
+        return;
+    }
+    // Sort the unchecked items alphabetically by name before sending to print view
+    const sortedList = [...uncheckedItems].sort((a, b) => a.name.localeCompare(b.name));
     navigate('/lista-zakupow/drukuj', { state: { shoppingListForPrint: sortedList } });
   };
   
@@ -62,9 +68,8 @@ const ShoppingListDashboard: React.FC = () => {
         name: '', 
         quantity: '', 
         unit: '', 
-        // No default category_id for shopping list item, will be "Inne" effectively
         category_id: null, 
-        category_name: 'Inne', // Default for manually added items
+        category_name: 'Inne', 
         checked: false, 
         recipeSources: ['Dodane ręcznie'] 
     });
@@ -83,8 +88,7 @@ const ShoppingListDashboard: React.FC = () => {
     }
     
     let finalItemData = { ...itemToEdit };
-    // For shopping list, category is not a primary concern for display, but good for data.
-    // If category_id exists, ensure category_name is consistent. Otherwise, 'Inne'.
+
     if (finalItemData.category_id) {
         const cat = recipeCategories.find(c => c.id === finalItemData.category_id);
         finalItemData.category_name = cat ? cat.name : 'Inne';
@@ -105,7 +109,6 @@ const ShoppingListDashboard: React.FC = () => {
     setItemToEdit(null);
   };
 
-  // Categories are now only for the modal, not for display grouping
   const modalCategoryOptions = useMemo(() => {
     return [
         { value: "", label: "Brak (Inne)"}, 
@@ -132,7 +135,7 @@ const ShoppingListDashboard: React.FC = () => {
           <Button onClick={handleClearList} variant="danger" size="sm" leftIcon={<TrashIcon />}>
             Wyczyść listę
           </Button>
-          <Button onClick={handlePrintList} variant="primary" size="sm" leftIcon={<PrintIcon />} disabled={shoppingList.length === 0}>
+          <Button onClick={handlePrintList} variant="primary" size="sm" leftIcon={<PrintIcon />} disabled={shoppingList.filter(item => !item.checked).length === 0}>
             Drukuj listę
           </Button>
         </div>
@@ -181,23 +184,6 @@ const ShoppingListDashboard: React.FC = () => {
                     onChange={e => setItemToEdit(prev => ({...prev!, unit: e.target.value}))} 
                     list="shoppinglist-item-units"
                 />
-                 {/* Category for shopping list items is not used for display grouping anymore, but can be kept for data consistency if needed */}
-                {/* <Select 
-                    label="Kategoria (opcjonalnie)" 
-                    options={modalCategoryOptions} 
-                    value={itemToEdit.category_id || ""} 
-                    onChange={e => {
-                        const selectedCatId = e.target.value;
-                        const selectedCat = recipeCategories.find(cat => cat.id === selectedCatId);
-                        setItemToEdit(prev => ({
-                            ...prev!, 
-                            category_id: selectedCatId || null,
-                            category_name: selectedCat ? selectedCat.name : 'Inne'
-                        }));
-                    }}
-                    disabled={isLoadingCategories}
-                    placeholder={isLoadingCategories ? "Ładowanie..." : "Wybierz kategorię"}
-                /> */}
                 <div className="flex justify-end space-x-2">
                     <Button variant="secondary" onClick={() => { setIsModalOpen(false); setItemToEdit(null); }}>Anuluj</Button>
                     <Button variant="primary" onClick={handleSaveItem}>Zapisz</Button>
