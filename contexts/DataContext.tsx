@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Recipe, WeeklyPlan, PlannedMeal, Ingredient, DayOfWeek, RecipeCategoryDB, Unit, Person } from '../types';
@@ -181,8 +182,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const fetchRecipes = useCallback(async (currentCategories?: RecipeCategoryDB[], currentPersons?: Person[]) => {
     const categoriesToUse = currentCategories || recipeCategories;
     const personsToUse = currentPersons || persons;
-    if (categoriesToUse.length === 0 && recipeCategories.length > 0) return; // Wait if categories are available but not passed
-    if (personsToUse.length === 0 && persons.length > 0) return; // Wait if persons are available but not passed
+    
+    // Avoid fetching if essential dependent data isn't ready yet but is expected
+    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories) return;
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) return;
+
 
     setIsLoadingRecipes(true);
     setErrorRecipes(null);
@@ -208,7 +212,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchPlanner = useCallback(async (currentPersons?: Person[]) => {
     const personsToUse = currentPersons || persons;
-    if (personsToUse.length === 0 && persons.length > 0) return; // Wait if persons are available but not passed
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) return;
 
     setIsLoadingPlanner(true);
     setErrorPlanner(null);
@@ -245,17 +249,32 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [persons, mapPlannedMealData]);
 
+
   useEffect(() => {
     async function loadInitialData() {
-        const cats = await fetchCategories();
-        const pers = await fetchPersons();
-        await fetchUnits();
-        // Fetch recipes and planner only after categories and persons are loaded
-        await fetchRecipes(cats, pers);
-        await fetchPlanner(pers);
+        // Explicitly set all loading states to true at the start of a full load cycle,
+        // though they are initialized to true in useState. This is for clarity.
+        setIsLoadingCategories(true);
+        setIsLoadingPersons(true);
+        setIsLoadingUnits(true);
+        setIsLoadingRecipes(true);
+        setIsLoadingPlanner(true);
+
+        const localCats = await fetchCategories(); 
+        const localPers = await fetchPersons();   
+        await fetchUnits();                     
+        
+        await fetchRecipes(localCats, localPers); 
+        await fetchPlanner(localPers);            
     }
     loadInitialData();
-  }, [fetchCategories, fetchUnits, fetchPersons, fetchRecipes, fetchPlanner]);
+  // We are intentionally omitting fetchRecipes and fetchPlanner from the dependency array.
+  // Their identities change as a result of fetchCategories/fetchPersons completing within
+  // this very loadInitialData sequence, which would cause an infinite loop if they were included.
+  // The sequence is self-contained and ensures data is passed correctly.
+  // fetchCategories, fetchUnits, fetchPersons are stable callbacks due to their empty dependency arrays.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchCategories, fetchUnits, fetchPersons]);
 
 
   const addRecipe = async (recipeData: Omit<Recipe, 'id' | 'created_at' | 'ingredients' | 'recipe_internal_prefix' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }): Promise<Recipe | null> => {
@@ -273,7 +292,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             nextInternalPrefix = categoryRecipes[0].recipe_internal_prefix + 1;
         }
       } else {
-        nextInternalPrefix = 1;
+        // For uncategorized recipes, we need a different strategy for prefix if it needs to be unique globally for uncategorized.
+        // Or, it can restart from 1 and not be globally unique (only within the "null category").
+        // Current SQL allows multiple recipes with null category_id and same recipe_internal_prefix.
+        // For this example, let's assume it restarts for "uncategorized".
+        const { data: uncategorizedRecipes, error: prefixError } = await supabase
+          .from('recipes')
+          .select('recipe_internal_prefix')
+          .is('category_id', null)
+          .order('recipe_internal_prefix', { ascending: false })
+          .limit(1);
+        if (prefixError) throw prefixError;
+        if (uncategorizedRecipes && uncategorizedRecipes.length > 0) {
+            nextInternalPrefix = uncategorizedRecipes[0].recipe_internal_prefix + 1;
+        } else {
+            nextInternalPrefix = 1;
+        }
       }
 
       const recipeToInsert = {
@@ -310,11 +344,18 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       
       const fullyMappedRecipe = mapRecipeData([newRecipe], recipeCategories, persons)[0];
-      setRecipes(prev => mapRecipeData([fullyMappedRecipe, ...prev.map(p => ({...p, ingredients: p.ingredients.map(i => ({...i}))}))], recipeCategories, persons).sort((a,b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime()));
+      setRecipes(prev => mapRecipeData([fullyMappedRecipe, ...prev.map(p => ({...p, ingredients: p.ingredients.map(i => ({...i}))}))], recipeCategories, persons).sort((a,b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return dateB - dateA; 
+        }));
       return fullyMappedRecipe;
     } catch (e) {
       console.error("Error adding recipe:", e);
       setErrorRecipes(e as Error);
+       if (e instanceof Error && (e.message.includes('uq_category_recipe_prefix') || e.message.includes('recipes_null_category_internal_prefix_idx'))) {
+          alert("Błąd: Prefiks przepisu w ramach wybranej kategorii (lub dla przepisów bez kategorii) musi być unikalny. Spróbuj ponownie lub zmień kategorię.");
+      }
       return null;
     }
   };
@@ -325,8 +366,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!originalRecipe) throw new Error("Original recipe not found for update.");
 
       let newInternalPrefix = recipeData.recipe_internal_prefix;
+      // Recalculate prefix only if category changes
       if (recipeData.category_id !== originalRecipe.category_id) {
-        newInternalPrefix = 1;
+        newInternalPrefix = 1; // Default to 1 for new category
         if (recipeData.category_id) {
             const { data: categoryRecipes, error: prefixError } = await supabase
             .from('recipes')
@@ -338,8 +380,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (categoryRecipes && categoryRecipes.length > 0) {
                 newInternalPrefix = categoryRecipes[0].recipe_internal_prefix + 1;
             }
-        } else {
-             newInternalPrefix = 1;
+        } else { // Moving to uncategorized
+             const { data: uncategorizedRecipes, error: prefixError } = await supabase
+              .from('recipes')
+              .select('recipe_internal_prefix')
+              .is('category_id', null)
+              .order('recipe_internal_prefix', { ascending: false })
+              .limit(1);
+            if (prefixError) throw prefixError;
+            if (uncategorizedRecipes && uncategorizedRecipes.length > 0) {
+                newInternalPrefix = uncategorizedRecipes[0].recipe_internal_prefix + 1;
+            } else {
+                newInternalPrefix = 1;
+            }
         }
       }
 
@@ -386,8 +439,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch (e) {
       console.error("Error updating recipe:", e);
       setErrorRecipes(e as Error);
-      if (e instanceof Error && e.message.includes('uq_category_recipe_prefix')) {
-          alert("Błąd: Prefiks przepisu w ramach wybranej kategorii nie jest unikalny.");
+      if (e instanceof Error && (e.message.includes('uq_category_recipe_prefix') || e.message.includes('recipes_null_category_internal_prefix_idx'))) {
+          alert("Błąd: Prefiks przepisu w ramach wybranej kategorii (lub dla przepisów bez kategorii) musi być unikalny. Zmiana kategorii mogła spowodować konflikt.");
       }
       return null;
     }
@@ -412,7 +465,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addRecipeCategory = async (categoryData: Omit<RecipeCategoryDB, 'id' | 'created_at'>): Promise<RecipeCategoryDB | null> => {
     try {
       const { data, error } = await supabase.from('recipe_categories').insert(categoryData).select().single();
-      if (error) { /* handle specific errors */ throw error; }
+      if (error) { 
+        if (error.message.includes('recipe_categories_prefix_key')) alert("Błąd: Prefiks kategorii musi być unikalny.");
+        if (error.message.includes('recipe_categories_name_key')) alert("Błąd: Nazwa kategorii musi być unikalna.");
+        throw error; 
+      }
       if (!data) throw new Error("Failed to add recipe category.");
       await fetchCategories().then(cats => fetchRecipes(cats, persons));
       return data as RecipeCategoryDB;
@@ -422,7 +479,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateRecipeCategory = async (categoryData: Omit<RecipeCategoryDB, 'created_at'>): Promise<RecipeCategoryDB | null> => {
     try {
       const { data, error } = await supabase.from('recipe_categories').update({ name: categoryData.name, prefix: categoryData.prefix }).eq('id', categoryData.id).select().single();
-      if (error) { /* handle specific errors */ throw error; }
+      if (error) { 
+        if (error.message.includes('recipe_categories_prefix_key')) alert("Błąd: Prefiks kategorii musi być unikalny.");
+        if (error.message.includes('recipe_categories_name_key')) alert("Błąd: Nazwa kategorii musi być unikalna.");
+        throw error; 
+      }
       if (!data) throw new Error("Failed to update recipe category.");
       await fetchCategories().then(cats => fetchRecipes(cats, persons));
       return data as RecipeCategoryDB;
@@ -431,13 +492,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deleteRecipeCategory = async (categoryId: string) => {
     try {
-      const { error: updateRecipesError } = await supabase.from('recipes').update({ category_id: null }).eq('category_id', categoryId);
+      // Update recipes: set category_id to null and recipe_internal_prefix to a new unique value if necessary (or handle conflicts)
+      // For simplicity, we'll just set category_id to null. The prefix logic for uncategorized recipes would apply if they are edited.
+      // Or, we might need to ensure that after this operation, prefixes are re-evaluated for uncategorized items if strict uniqueness is desired.
+      // The simplest approach is to just nullify category_id.
+      const { error: updateRecipesError } = await supabase
+        .from('recipes')
+        .update({ category_id: null /* Optionally adjust recipe_internal_prefix here if needed */ })
+        .eq('category_id', categoryId);
+
       if (updateRecipesError) throw updateRecipesError;
 
       const { error: deleteCategoryError } = await supabase.from('recipe_categories').delete().eq('id', categoryId);
       if (deleteCategoryError) throw deleteCategoryError;
       
-      await fetchCategories().then(cats => fetchRecipes(cats, persons));
+      // Re-fetch categories and then recipes to reflect the changes
+      await fetchCategories().then(async (newCats) => {
+          await fetchRecipes(newCats, persons);
+      });
     } catch (e) { console.error("Error deleting recipe category:", e); setErrorCategories(e as Error); }
   };
 
@@ -476,12 +548,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const { error } = await supabase.from('planned_meals').delete().neq('id', crypto.randomUUID()); 
       if (error) throw error;
-      setWeeklyPlan({ ...initialWeeklyPlan }); // No need to map persons here, it's empty
+      setWeeklyPlan({ ...initialWeeklyPlan }); 
     } catch (e) { console.error("Error clearing weekly plan:", e); setErrorPlanner(e as Error); }
   };
 
-  const addUnit = async (unitName: string): Promise<Unit | null> => { /* ... unchanged ... */ return null; };
-  const deleteUnit = async (unitId: string) => { /* ... unchanged ... */ };
+  const addUnit = async (unitName: string): Promise<Unit | null> => {
+    try {
+      const { data, error } = await supabase.from('units').insert({ name: unitName.trim() }).select().single();
+      if (error) {
+        if (error.message.includes('units_name_key')) alert('Błąd: Nazwa jednostki musi być unikalna.');
+        throw error;
+      }
+      if (!data) throw new Error("Failed to add unit.");
+      await fetchUnits();
+      return data as Unit;
+    } catch(e) { console.error("Error adding unit:", e); setErrorUnits(e as Error); return null; }
+  };
+  const deleteUnit = async (unitId: string) => {
+    try {
+        // Note: Consider if this unit is used in many ingredients. Deleting might be disruptive.
+        // For now, direct delete. Could be enhanced to warn or update ingredients.
+        const { error } = await supabase.from('units').delete().eq('id', unitId);
+        if (error) throw error;
+        await fetchUnits();
+    } catch (e) { console.error("Error deleting unit:", e); setErrorUnits(e as Error); }
+  };
 
 
   // Person CRUD
@@ -513,11 +604,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deletePerson = async (personIdToDelete: string) => {
     try {
-        // Step 1: Update recipes
         const { data: affectedRecipes, error: fetchRecipesError } = await supabase
             .from('recipes')
             .select('id, person_ids')
-            .filter('person_ids', 'cs', `{${personIdToDelete}}`); // Contains personIdToDelete
+            .filter('person_ids', 'cs', `{${personIdToDelete}}`); 
 
         if (fetchRecipesError) throw fetchRecipesError;
 
@@ -530,7 +620,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (updateRecipeError) throw updateRecipeError;
         }
 
-        // Step 2: Update planned_meals
         const { data: affectedPlannedMeals, error: fetchPlannedMealsError } = await supabase
             .from('planned_meals')
             .select('id, person_ids')
@@ -547,13 +636,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (updateMealError) throw updateMealError;
         }
 
-        // Step 3: Delete the person
         const { error: deletePersonError } = await supabase.from('persons').delete().eq('id', personIdToDelete);
         if (deletePersonError) throw deletePersonError;
 
-        // Step 4: Refresh local data
         await fetchPersons().then(async (newPersons) => {
-            await fetchRecipes(recipeCategories, newPersons);
+            await fetchRecipes(recipeCategories, newPersons); // Use existing recipeCategories state
             await fetchPlanner(newPersons);
         });
 
@@ -563,7 +650,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 };
 
-  const getAllIngredientNames = useCallback((): string[] => { /* ... unchanged ... */ return []; }, [recipes]);
+  const getAllIngredientNames = useCallback((): string[] => {
+    const names = new Set<string>();
+    recipes.forEach(recipe => {
+      recipe.ingredients.forEach(ingredient => {
+        names.add(ingredient.name);
+      });
+    });
+    return Array.from(names).sort();
+  }, [recipes]);
 
   return (
     <DataContext.Provider value={{
