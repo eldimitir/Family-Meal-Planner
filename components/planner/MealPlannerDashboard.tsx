@@ -14,9 +14,9 @@ import { PrintIcon, TrashIcon, EyeIcon, PlusIcon, ArrowDownTrayIcon, ArrowPathIc
 const MealPlannerDashboard: React.FC = () => {
   const { 
     weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, 
-    archiveCurrentPlan, isLoadingArchivedPlans: isLoadingArchiveAction, // Renamed to avoid conflict
+    archiveCurrentPlan, isLoadingArchivedPlans: isLoadingArchiveAction, 
     archivedPlans, restorePlan, refreshArchivedPlans, 
-    isLoadingArchivedPlans: isLoadingArchivedPlansList, // For list loading
+    isLoadingArchivedPlans: isLoadingArchivedPlansList, 
     errorArchivedPlans 
   } = useData();
   
@@ -28,10 +28,7 @@ const MealPlannerDashboard: React.FC = () => {
   const [mealToEdit, setMealToEdit] = useState<PlannedMeal | undefined>(undefined);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    refreshArchivedPlans();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Fetch archived plans when dashboard mounts
+  // Removed useEffect for refreshArchivedPlans - data is loaded by loadInitialData in DataContext
 
   const handleAddMeal = (day: DayOfWeek) => {
     setSelectedDay(day);
@@ -68,7 +65,7 @@ const MealPlannerDashboard: React.FC = () => {
   };
   
   const handleOpenRestoreModal = () => {
-    refreshArchivedPlans(); // Refresh before opening, in case of recent changes
+    refreshArchivedPlans(); 
     setIsRestoreModalOpen(true);
   };
 

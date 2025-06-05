@@ -14,7 +14,7 @@ const SettingsPage: React.FC = () => {
     recipeCategories, addRecipeCategory, updateRecipeCategory, deleteRecipeCategory, 
     isLoadingCategories, errorCategories, refreshCategories,
     persons, addPerson, updatePerson, deletePerson, isLoadingPersons, errorPersons, refreshPersons,
-    archivedPlans, deleteArchivedPlan, isLoadingArchivedPlans, errorArchivedPlans, refreshArchivedPlans, // Removed restorePlan
+    archivedPlans, deleteArchivedPlan, isLoadingArchivedPlans, errorArchivedPlans, // Removed restorePlan, refreshArchivedPlans as it's not called directly from here now
     exportAllData, importAllData
   } = useData();
   
@@ -38,11 +38,7 @@ const SettingsPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-
-  useEffect(() => {
-    refreshArchivedPlans();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Changed dependency to empty array to fetch only on mount
+  // Removed useEffect for refreshArchivedPlans - data is loaded by loadInitialData in DataContext
 
   const handleAddUnit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,7 +156,6 @@ const SettingsPage: React.FC = () => {
         if (typeof text !== 'string') throw new Error("Nie udało się odczytać pliku.");
         const jsonData = JSON.parse(text) as FullExportData;
         
-        // Basic validation of the JSON structure
         if (!jsonData || typeof jsonData !== 'object' || 
             !jsonData.recipeCategories || !jsonData.units || !jsonData.persons || 
             !jsonData.recipes || !jsonData.plannedMeals) {
@@ -169,7 +164,6 @@ const SettingsPage: React.FC = () => {
 
         const success = await importAllData(jsonData);
         if (success) {
-            // Optionally, clear the file input
             if (fileInputRef.current) {
                 fileInputRef.current.value = "";
             }
@@ -180,7 +174,7 @@ const SettingsPage: React.FC = () => {
       } finally {
         setIsImporting(false);
          if (fileInputRef.current) {
-            fileInputRef.current.value = ""; // Ensure file input is cleared
+            fileInputRef.current.value = ""; 
         }
       }
     };
@@ -195,7 +189,6 @@ const SettingsPage: React.FC = () => {
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-slate-800">Ustawienia</h1>
 
-      {/* Zarządzanie jednostkami */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarządzaj Jednostkami</h2>
         {errorUnits && <p className="text-red-500 text-sm mb-2">Błąd ładowania jednostek: {errorUnits.message}</p>}
@@ -226,7 +219,6 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
-      {/* Zarządzanie kategoriami przepisów */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-3">Zarządzaj Kategoriami Przepisów</h2>
         {errorCategories && <p className="text-red-500 text-sm mb-2">Błąd ładowania kategorii: {errorCategories.message}</p>}
@@ -274,8 +266,6 @@ const SettingsPage: React.FC = () => {
         </Modal>
       )}
 
-
-      {/* Zarządzanie Osobami */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-3">Zarządzaj Osobami</h2>
         {errorPersons && <p className="text-red-500 text-sm mb-2">Błąd ładowania osób: {errorPersons.message}</p>}
@@ -319,7 +309,6 @@ const SettingsPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Zarządzanie Zarchiwizowanymi Planami - tylko listowanie i usuwanie */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-3">Zarządzaj Zarchiwizowanymi Planami Posiłków</h2>
         {isLoadingArchivedPlans && <p>Ładowanie zarchiwizowanych planów...</p>}
@@ -362,8 +351,6 @@ const SettingsPage: React.FC = () => {
         )}
       </Card>
 
-
-      {/* Import / Export */}
       <Card>
         <h2 className="text-xl font-semibold text-sky-700 mb-4">Zarządzanie Danymi (Import/Eksport)</h2>
         <div className="space-y-4">
