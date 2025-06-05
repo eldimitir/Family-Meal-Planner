@@ -9,19 +9,22 @@ import MealPlannerDashboard from './components/planner/MealPlannerDashboard';
 import ShoppingListDashboard from './components/shoppingList/ShoppingListDashboard';
 import SettingsPage from './components/settings/SettingsPage';
 import RecipeDetailView from './components/recipes/RecipeDetailView';
-import PlannerPreviewPage from './components/planner/PlannerPreviewPage'; // New import
+import PlannerPreviewPage from './components/planner/PlannerPreviewPage';
 import PlannerPrintView from './components/planner/PlannerPrintView';
 import ShoppingListPrintView from './components/shoppingList/ShoppingListPrintView';
 
 const ProtectedRoute: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  const { isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, errorRecipes, errorPlanner, errorCategories, errorUnits } = useData(); 
+  const { 
+    isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, isLoadingPersons,
+    errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons 
+  } = useData(); 
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (isLoadingRecipes || isLoadingPlanner || isLoadingCategories || isLoadingUnits) {
+  if (isLoadingRecipes || isLoadingPlanner || isLoadingCategories || isLoadingUnits || isLoadingPersons) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-100">
         <div className="text-xl font-semibold text-slate-700">Ładowanie danych...</div>
@@ -29,7 +32,7 @@ const ProtectedRoute: React.FC = () => {
     );
   }
 
-  const anyError = errorRecipes || errorPlanner || errorCategories || errorUnits;
+  const anyError = errorRecipes || errorPlanner || errorCategories || errorUnits || errorPersons;
   if (anyError) {
      return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-4">
@@ -39,6 +42,7 @@ const ProtectedRoute: React.FC = () => {
         {errorPlanner && <p className="text-xs text-red-500 mt-1">Błąd planera: {errorPlanner.message}</p>}
         {errorCategories && <p className="text-xs text-red-500 mt-1">Błąd kategorii: {errorCategories.message}</p>}
         {errorUnits && <p className="text-xs text-red-500 mt-1">Błąd jednostek: {errorUnits.message}</p>}
+        {errorPersons && <p className="text-xs text-red-500 mt-1">Błąd osób: {errorPersons.message}</p>}
       </div>
     );
   }
@@ -77,7 +81,7 @@ const App: React.FC = () => {
         <Route path="/przepisy/:id" element={<RecipeDetailView printMode={false} />} />
         <Route path="/przepisy/:id/drukuj" element={<RecipeDetailView printMode={true} />} />
         <Route path="/planer" element={<MealPlannerDashboard />} />
-        <Route path="/planer/podglad" element={<PlannerPreviewPage />} /> {/* New route */}
+        <Route path="/planer/podglad" element={<PlannerPreviewPage />} />
         <Route path="/planer/drukuj" element={<PlannerPrintView />} />
         <Route path="/lista-zakupow" element={<ShoppingListDashboard />} />
         <Route path="/lista-zakupow/drukuj" element={<ShoppingListPrintView />} />

@@ -25,9 +25,9 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
         {recipe?.title || meal.custom_meal_name || 'Niezdefiniowany posiłek'}
       </h4>
       <p className="text-xs text-slate-500">{meal.meal_type}</p>
-      {meal.persons && meal.persons.length > 0 && (
-        <p className="text-xs text-slate-500 truncate" title={`Dla: ${meal.persons.join(', ')}`}>
-            Dla: {meal.persons.join(', ')}
+      {meal.persons_names && meal.persons_names.length > 0 && (
+        <p className="text-xs text-slate-500 truncate" title={`Dla: ${meal.persons_names.join(', ')}`}>
+            Dla: {meal.persons_names.join(', ')}
         </p>
       )}
       <div className="mt-2 flex justify-end space-x-1">

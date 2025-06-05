@@ -24,7 +24,7 @@ const PlannerPreviewPage: React.FC = () => {
     organizedPlan[day] = {};
     MEAL_TYPES.forEach(mealType => {
       organizedPlan[day][mealType] = (weeklyPlan[day] || []).filter(m => m.meal_type === mealType)
-        .sort((a,b) => (getRecipeById(a.recipe_id || '')?.title || a.custom_meal_name || '').localeCompare(getRecipeById(b.recipe_id || '')?.title || b.custom_meal_name || '')); // Sort meals alphabetically
+        .sort((a,b) => (getRecipeById(a.recipe_id || '')?.title || a.custom_meal_name || '').localeCompare(getRecipeById(b.recipe_id || '')?.title || b.custom_meal_name || ''));
     });
   });
   
@@ -67,8 +67,8 @@ const PlannerPreviewPage: React.FC = () => {
                         {organizedPlan[day][mealType].map(meal => (
                           <li key={meal.id}>
                             <p className="font-semibold text-sky-800">{getMealName(meal)}</p>
-                            {meal.persons && meal.persons.length > 0 && (
-                              <p className="text-slate-500 text-xs">({meal.persons.join(', ')})</p>
+                            {meal.persons_names && meal.persons_names.length > 0 && (
+                              <p className="text-slate-500 text-xs">({meal.persons_names.join(', ')})</p>
                             )}
                           </li>
                         ))}

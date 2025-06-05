@@ -23,7 +23,7 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
   };
 
   const formattedCategoryPrefix = recipe.category_id ? formatPrefix(recipe.category_code_prefix) : null;
-  const formattedRecipePrefix = recipe.category_id ? formatPrefix(recipe.recipe_internal_prefix) : formatPrefix(recipe.recipe_internal_prefix); // recipe_internal_prefix always exists
+  const formattedRecipePrefix = recipe.category_id ? formatPrefix(recipe.recipe_internal_prefix) : formatPrefix(recipe.recipe_internal_prefix);
 
 
   return (
@@ -34,7 +34,7 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
             {recipe.title}
           </Link>
         </h3>
-        {(formattedCategoryPrefix !== null || recipe.category_id === null) && ( // Show prefix line if category exists or if it's uncategorized (to show its own prefix)
+        {(formattedCategoryPrefix !== null || recipe.category_id === null) && (
              <p className="font-mono text-xs text-slate-500 mb-2">
                 {recipe.category_id ? `${formattedCategoryPrefix}.${formattedRecipePrefix}` : `---.${formattedRecipePrefix}`}
              </p>
@@ -44,9 +44,9 @@ const RecipeItem: React.FC<RecipeItemProps> = ({ recipe, onEdit }) => {
         <p className="text-sm text-slate-500 mb-1">Czas przygotowania: {recipe.prep_time}</p>
         {recipe.calories !== null && typeof recipe.calories !== 'undefined' && <p className="text-sm text-slate-500 mb-3">Kaloryczność: {recipe.calories} kcal</p>}
 
-        {recipe.persons && recipe.persons.length > 0 && (
+        {recipe.persons_names && recipe.persons_names.length > 0 && (
           <div className="mb-2">
-            <p className="text-xs text-slate-400">Dla: {recipe.persons.join(', ')}</p>
+            <p className="text-xs text-slate-400">Dla: {recipe.persons_names.join(', ')}</p>
           </div>
         )}
 

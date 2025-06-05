@@ -1,5 +1,5 @@
 {
-  "name": "Rodzinny Planer Posiłków",
+  "name": "Rodzinny Planer Posiłków [v2]",
   "description": "Aplikacja webowa do planowania posiłków rodzinnych, zarządzania przepisami i tworzenia list zakupów. Dane przechowywane lokalnie w przeglądarce.",
   "requestFramePermissions": [],
   "prompt": ""

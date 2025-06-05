@@ -12,21 +12,21 @@ interface RecipeDetailViewProps {
 
 const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
   const { id } = useParams<{ id: string }>();
-  const { getRecipeById, deleteRecipe, isLoadingRecipes } = useData(); 
+  const { getRecipeById, deleteRecipe, isLoadingRecipes, isLoadingPersons } = useData(); 
   const navigate = useNavigate();
   const [recipe, setRecipe] = useState<Recipe | null | undefined>(undefined); 
 
   useEffect(() => {
-    if (id && !isLoadingRecipes) { 
+    if (id && !isLoadingRecipes && !isLoadingPersons) { 
       const foundRecipe = getRecipeById(id);
       setRecipe(foundRecipe || null); 
       if (foundRecipe && printMode) {
         setTimeout(() => window.print(), 500);
       }
     }
-  }, [id, getRecipeById, navigate, printMode, isLoadingRecipes]);
+  }, [id, getRecipeById, navigate, printMode, isLoadingRecipes, isLoadingPersons]);
 
-  if (isLoadingRecipes || recipe === undefined) {
+  if (isLoadingRecipes || isLoadingPersons || recipe === undefined) {
     return (
       <div className="flex justify-center items-center h-64">
         <p className="text-xl text-slate-500">Ładowanie przepisu...</p>
@@ -115,8 +115,8 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({ printMode }) => {
             {recipe.tags.length > 0 && (
               <span><strong>Tagi:</strong> {recipe.tags.join(', ')}</span>
             )}
-             {recipe.persons.length > 0 && (
-              <span><strong>Dla:</strong> {recipe.persons.join(', ')}</span>
+             {recipe.persons_names && recipe.persons_names.length > 0 && (
+              <span><strong>Dla:</strong> {recipe.persons_names.join(', ')}</span>
             )}
           </div>
         </header>

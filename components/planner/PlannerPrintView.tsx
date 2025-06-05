@@ -7,12 +7,11 @@ const PlannerPrintView: React.FC = () => {
   const { weeklyPlan, getRecipeById } = useData();
 
   useEffect(() => {
-    // Check if there's actually anything to print
     const isEmptyPlan = Object.values(weeklyPlan).every(dayMeals => dayMeals.length === 0);
     if (!isEmptyPlan) {
         const timer = setTimeout(() => {
         window.print();
-        }, 500); // Delay to allow content to render
+        }, 500); 
         return () => clearTimeout(timer);
     }
   }, [weeklyPlan]);
@@ -37,16 +36,12 @@ const PlannerPrintView: React.FC = () => {
   });
 
   const isEmptyPlan = Object.values(weeklyPlan).every(dayMeals => dayMeals.length === 0);
-  if (isEmptyPlan && typeof window !== 'undefined') { // Check window to avoid issues during server-side rendering or testing
-     // Attempt to close the print preview if it was opened and there's nothing to print.
-     // This is a bit of a hack, browser behavior might vary.
-     // Or display a message. For now, let's rely on the preview page to not navigate here if empty.
-     // Alternatively, this component could show a "nothing to print" message.
+  if (isEmptyPlan && typeof window !== 'undefined') { 
      return (
         <div className="print-container p-4 font-sans text-center">
              <h1 className="text-2xl font-bold text-center mb-6 text-sky-700">Tygodniowy Plan Posiłków</h1>
             <p>Plan tygodniowy jest pusty. Nie ma nic do wydrukowania.</p>
-             <button onClick={() => window.history.back()} className="mt-4 p-2 bg-slate-200 rounded">Wróć</button>
+             <button onClick={() => window.history.back()} className="mt-4 p-2 bg-slate-200 rounded no-print">Wróć</button>
         </div>
      );
   }
@@ -76,8 +71,8 @@ const PlannerPrintView: React.FC = () => {
                         {organizedPlan[day][mealType].map(meal => (
                         <li key={meal.id} className="mb-1">
                             <p className="font-semibold text-sky-800">{getMealName(meal)}</p>
-                            {meal.persons && meal.persons.length > 0 && (
-                            <p className="text-slate-500 text-xs">({meal.persons.join(', ')})</p>
+                            {meal.persons_names && meal.persons_names.length > 0 && (
+                            <p className="text-slate-500 text-xs">({meal.persons_names.join(', ')})</p>
                             )}
                         </li>
                         ))}

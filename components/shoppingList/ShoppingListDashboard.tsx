@@ -46,7 +46,9 @@ const ShoppingListDashboard: React.FC = () => {
         alert("Lista zakupów jest pusta. Nie ma czego drukować.");
         return;
     }
-    navigate('/lista-zakupow/drukuj', { state: { shoppingListForPrint: shoppingList } });
+    // Sort the list alphabetically by name before sending to print view
+    const sortedList = [...shoppingList].sort((a, b) => a.name.localeCompare(b.name));
+    navigate('/lista-zakupow/drukuj', { state: { shoppingListForPrint: sortedList } });
   };
   
   const handleClearList = () => {
@@ -56,13 +58,13 @@ const ShoppingListDashboard: React.FC = () => {
   };
 
   const openAddItemModal = () => {
-    const defaultCategory = recipeCategories.length > 0 ? recipeCategories[0] : null;
     setItemToEdit({ 
         name: '', 
         quantity: '', 
         unit: '', 
-        category_id: defaultCategory?.id || null, 
-        category_name: defaultCategory?.name || 'Inne',
+        // No default category_id for shopping list item, will be "Inne" effectively
+        category_id: null, 
+        category_name: 'Inne', // Default for manually added items
         checked: false, 
         recipeSources: ['Dodane ręcznie'] 
     });
@@ -81,6 +83,8 @@ const ShoppingListDashboard: React.FC = () => {
     }
     
     let finalItemData = { ...itemToEdit };
+    // For shopping list, category is not a primary concern for display, but good for data.
+    // If category_id exists, ensure category_name is consistent. Otherwise, 'Inne'.
     if (finalItemData.category_id) {
         const cat = recipeCategories.find(c => c.id === finalItemData.category_id);
         finalItemData.category_name = cat ? cat.name : 'Inne';
@@ -88,14 +92,9 @@ const ShoppingListDashboard: React.FC = () => {
         finalItemData.category_name = 'Inne'; 
     }
 
-    // Ensure quantity is just the string, unit is separate for consistency if user entered it that way
-    // However, generateShoppingList now creates quantity as "100 g" and unit as "g".
-    // For manual add, user might type "100" in quantity and "g" in unit.
-    // We should combine them into the quantity string if unit is provided.
     if (finalItemData.quantity && finalItemData.unit && !finalItemData.quantity.toLowerCase().includes(finalItemData.unit.toLowerCase())) {
         finalItemData.quantity = `${finalItemData.quantity.trim()} ${finalItemData.unit.trim()}`;
     }
-
 
     if (itemToEdit.id && itemToEdit.id !== crypto.randomUUID() && shoppingList.some(i => i.id === itemToEdit.id)) { 
         setShoppingList(prev => prev.map(i => i.id === finalItemData!.id ? finalItemData as ShoppingListItem : i));
@@ -106,6 +105,7 @@ const ShoppingListDashboard: React.FC = () => {
     setItemToEdit(null);
   };
 
+  // Categories are now only for the modal, not for display grouping
   const modalCategoryOptions = useMemo(() => {
     return [
         { value: "", label: "Brak (Inne)"}, 
@@ -116,21 +116,9 @@ const ShoppingListDashboard: React.FC = () => {
   const availableUnitsForDatalist = useMemo(() => units.map(u => u.name), [units]);
   const availableIngredientNamesForDatalist = useMemo(() => getAllIngredientNames(), [getAllIngredientNames]);
 
-
-  const categoriesForDisplay = Array.from(new Set(shoppingList.map(item => item.category_name || 'Inne')))
-    .sort((a, b) => {
-        const findOrder = (catName: string) => recipeCategories.findIndex(rc => rc.name === catName);
-        const orderA = findOrder(a);
-        const orderB = findOrder(b);
-
-        if (a === 'Inne' && b !== 'Inne') return 1; 
-        if (b === 'Inne' && a !== 'Inne') return -1;
-
-        if (orderA !== -1 && orderB !== -1) return orderA - orderB;
-        if (orderA !== -1) return -1; 
-        if (orderB !== -1) return 1;
-        return a.localeCompare(b); 
-    });
+  const sortedShoppingList = useMemo(() => {
+    return [...shoppingList].sort((a, b) => a.name.localeCompare(b.name));
+  }, [shoppingList]);
 
   return (
     <div className="space-y-8">
@@ -156,23 +144,19 @@ const ShoppingListDashboard: React.FC = () => {
           <p className="text-slate-400 mt-2">Zaplanuj posiłki, aby automatycznie wygenerować listę, lub dodaj produkty ręcznie.</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {categoriesForDisplay.map(categoryName => (
-            <div key={categoryName} className="bg-white p-4 rounded-lg shadow">
-              <h2 className="text-xl font-semibold text-sky-700 mb-3 border-b pb-2">{categoryName}</h2>
-              <div className="space-y-2">
-                {shoppingList.filter(item => (item.category_name || 'Inne') === categoryName).map(item => (
-                  <ShoppingListItemComponent
-                    key={item.id}
-                    item={item}
-                    onToggleChecked={handleToggleChecked}
-                    onDeleteItem={handleDeleteItem}
-                    onEditItem={openEditItemModal}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="bg-white p-4 rounded-lg shadow">
+          <h2 className="text-xl font-semibold text-sky-700 mb-3 border-b pb-2">Wszystkie Produkty</h2>
+          <div className="space-y-2">
+            {sortedShoppingList.map(item => (
+              <ShoppingListItemComponent
+                key={item.id}
+                item={item}
+                onToggleChecked={handleToggleChecked}
+                onDeleteItem={handleDeleteItem}
+                onEditItem={openEditItemModal}
+              />
+            ))}
+          </div>
         </div>
       )}
       <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setItemToEdit(null); }} title={itemToEdit?.id && shoppingList.some(i => i.id === itemToEdit.id) ? "Edytuj Produkt" : "Dodaj Produkt Ręcznie"}>
@@ -192,12 +176,13 @@ const ShoppingListDashboard: React.FC = () => {
                     required 
                 />
                 <Input 
-                    label="Jednostka (np. g, szt, ml)" 
+                    label="Jednostka (np. g, szt, ml) - opcjonalnie, jeśli nie w ilości" 
                     value={itemToEdit.unit || ''} 
                     onChange={e => setItemToEdit(prev => ({...prev!, unit: e.target.value}))} 
                     list="shoppinglist-item-units"
                 />
-                <Select 
+                 {/* Category for shopping list items is not used for display grouping anymore, but can be kept for data consistency if needed */}
+                {/* <Select 
                     label="Kategoria (opcjonalnie)" 
                     options={modalCategoryOptions} 
                     value={itemToEdit.category_id || ""} 
@@ -212,7 +197,7 @@ const ShoppingListDashboard: React.FC = () => {
                     }}
                     disabled={isLoadingCategories}
                     placeholder={isLoadingCategories ? "Ładowanie..." : "Wybierz kategorię"}
-                />
+                /> */}
                 <div className="flex justify-end space-x-2">
                     <Button variant="secondary" onClick={() => { setIsModalOpen(false); setItemToEdit(null); }}>Anuluj</Button>
                     <Button variant="primary" onClick={handleSaveItem}>Zapisz</Button>

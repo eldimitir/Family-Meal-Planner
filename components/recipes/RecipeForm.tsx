@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Recipe, Ingredient, RecipeCategoryDB } from '../../types';
+import { Recipe, Ingredient, RecipeCategoryDB, Person } from '../../types';
 import { useData } from '../../contexts/DataContext';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
@@ -14,10 +14,10 @@ interface RecipeFormProps {
 
 const initialIngredient: Omit<Ingredient, 'recipe_id'> = { id: crypto.randomUUID(), name: '', quantity: '', unit: '' };
 
-type RecipeFormErrors = Partial<Record<keyof Omit<Recipe, 'ingredients' | 'id' | 'created_at' | 'category_name' | 'category_code_prefix' | 'recipe_internal_prefix'> | 'formIngredients', string>> & { general?: string };
+type RecipeFormErrors = Partial<Record<keyof Omit<Recipe, 'ingredients' | 'id' | 'created_at' | 'category_name' | 'category_code_prefix' | 'recipe_internal_prefix' | 'persons_names' | 'person_ids'> | 'formIngredients', string>> & { general?: string };
 
 const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
-  const { addRecipe, updateRecipe, recipeCategories, units, getAllIngredientNames, isLoadingCategories } = useData();
+  const { addRecipe, updateRecipe, recipeCategories, units, persons: allPersons, getAllIngredientNames, isLoadingCategories, isLoadingPersons } = useData();
   
   const [title, setTitle] = useState('');
   const [formIngredients, setFormIngredients] = useState<(Omit<Ingredient, 'recipe_id'> & { tempId: string })[]>(
@@ -25,11 +25,10 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
   );
   const [instructions, setInstructions] = useState('');
   const [prepTime, setPrepTime] = useState('');
-  const [categoryId, setCategoryId] = useState<string | null>(null); // Can be null
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [currentTag, setCurrentTag] = useState('');
-  const [persons, setPersons] = useState<string[]>([]);
-  const [currentPerson, setCurrentPerson] = useState('');
+  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [calories, setCalories] = useState<number | string>('');
   
   const [errors, setErrors] = useState<RecipeFormErrors>({});
@@ -44,30 +43,22 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       setFormIngredients(recipeToEdit.ingredients.map(ing => ({ ...ing, tempId: ing.id || crypto.randomUUID() })));
       setInstructions(recipeToEdit.instructions);
       setPrepTime(recipeToEdit.prep_time);
-      setCategoryId(recipeToEdit.category_id); // Can be null
+      setCategoryId(recipeToEdit.category_id);
       setTags(recipeToEdit.tags || []);
-      setPersons(recipeToEdit.persons || []);
+      setSelectedPersonIds(recipeToEdit.person_ids || []);
       setCalories(recipeToEdit.calories === null || typeof recipeToEdit.calories === 'undefined' ? '' : recipeToEdit.calories);
     } else {
       setTitle('');
       setFormIngredients([{ ...initialIngredient, tempId: crypto.randomUUID() }]);
       setInstructions('');
       setPrepTime('');
-      setCategoryId(null); // Default to no category selected
+      setCategoryId(null);
       setTags([]);
       setCurrentTag('');
-      setPersons([]);
-      setCurrentPerson('');
+      setSelectedPersonIds([]); // Default to no persons selected for a new recipe
       setCalories('');
     }
   }, [recipeToEdit, recipeCategories]);
-
-  // No automatic default categoryId selection on load for new recipe. User must choose or leave as "Brak kategorii".
-  // useEffect(() => {
-  //   if (!recipeToEdit && !categoryId && recipeCategories.length > 0 && !isLoadingCategories) {
-  //     // setCategoryId(recipeCategories[0].id); // No longer default to first category
-  //   }
-  // }, [recipeCategories, isLoadingCategories, recipeToEdit, categoryId]);
 
 
   const handleIngredientChange = (tempId: string, field: keyof Omit<Ingredient, 'id' | 'recipe_id'>, value: string) => {
@@ -94,16 +85,16 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
   };
   const handleTagRemove = (tagToRemove: string) => setTags(tags.filter(tag => tag !== tagToRemove));
 
-  const handlePersonAdd = () => {
-    if (currentPerson.trim() !== '' && !persons.includes(currentPerson.trim())) {
-      setPersons([...persons, currentPerson.trim()]);
-      setCurrentPerson('');
-    }
+  const handlePersonToggle = (personId: string) => {
+    setSelectedPersonIds(prev =>
+      prev.includes(personId)
+        ? prev.filter(id => id !== personId)
+        : [...prev, personId]
+    );
   };
-  const handlePersonRemove = (personToRemove: string) => setPersons(persons.filter(person => person !== personToRemove));
 
   const categoryOptions = [
-    { value: "", label: "Brak kategorii" }, // Option for no category
+    { value: "", label: "Brak kategorii" },
     ...recipeCategories.map(cat => ({ value: cat.id, label: `${String(cat.prefix).padStart(3, '0')} - ${cat.name}` }))
   ];
 
@@ -112,8 +103,6 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
     if (!title.trim()) newErrors.title = "Tytuł jest wymagany.";
     if (!instructions.trim()) newErrors.instructions = "Instrukcje są wymagane.";
     if (!prepTime.trim()) newErrors.prep_time = "Czas przygotowania jest wymagany.";
-    // categoryId can be null, so no validation needed for it being present.
-    // if (!categoryId) newErrors.category_id = "Kategoria jest wymagana.";
     if (formIngredients.some(ing => !ing.name.trim() || !ing.quantity.trim())) {
       newErrors.formIngredients = "Wszystkie składniki muszą mieć nazwę i ilość.";
     }
@@ -133,13 +122,13 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
         .filter(ing => ing.name.trim() !== '')
         .map(({ tempId, id, ...rest }) => ({...rest}));
 
-    const recipePayload: Omit<Recipe, 'id' | 'created_at' | 'ingredients' | 'recipe_internal_prefix' | 'category_name' | 'category_code_prefix'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] } = {
+    const recipePayload = {
       title,
       instructions,
       prep_time: prepTime,
-      category_id: categoryId || null, // Pass null if empty string (no category selected)
+      category_id: categoryId || null,
       tags,
-      persons,
+      person_ids: selectedPersonIds.length > 0 ? selectedPersonIds : null,
       calories: calories === '' || calories === null ? null : parseInt(String(calories), 10),
       ingredients: processedIngredients,
     };
@@ -148,7 +137,8 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       if (recipeToEdit) {
         await updateRecipe({ ...recipePayload, id: recipeToEdit.id, recipe_internal_prefix: recipeToEdit.recipe_internal_prefix });
       } else {
-        await addRecipe(recipePayload);
+        // Type assertion for addRecipe payload
+        await addRecipe(recipePayload as Omit<Recipe, 'id' | 'created_at' | 'ingredients' | 'recipe_internal_prefix' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] });
       }
       onClose();
     } catch (error) {
@@ -160,7 +150,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto p-1">
       <Input label="Tytuł przepisu" value={title} onChange={(e) => setTitle(e.target.value)} error={errors.title} required disabled={isSubmitting}/>
       
       <div>
@@ -201,10 +191,9 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
         <Select 
             label="Kategoria" 
             options={categoryOptions} 
-            value={categoryId || ""} // Handle null value for select
-            onChange={(e) => setCategoryId(e.target.value || null)} // Set to null if "" selected
+            value={categoryId || ""}
+            onChange={(e) => setCategoryId(e.target.value || null)}
             error={errors.category_id} 
-            // Not required anymore, can be "Brak kategorii"
             disabled={isSubmitting || isLoadingCategories}
             placeholder={isLoadingCategories ? "Ładowanie kategorii..." : "Wybierz kategorię"}
         />
@@ -220,28 +209,27 @@ const RecipeForm: React.FC<RecipeFormProps> = ({ onClose, recipeToEdit }) => {
       />
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Osoby (np. Michał, Kasia)</label>
-        <div className="flex items-center space-x-2 mb-2">
-          <Input containerClassName="mb-0 flex-1" placeholder="Dodaj osobę" value={currentPerson} onChange={(e) => setCurrentPerson(e.target.value)} 
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePersonAdd();}}}
-            disabled={isSubmitting}
-          />
-          <Button type="button" variant="secondary" size="sm" onClick={handlePersonAdd} disabled={isSubmitting}>Dodaj osobę</Button>
-        </div>
-        {persons.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {persons.map(person => (
-              <span key={person} className="bg-sky-100 text-sky-700 px-2 py-1 rounded-full text-sm flex items-center">
-                {person}
-                <button type="button" onClick={() => handlePersonRemove(person)} className="ml-1 text-sky-500 hover:text-sky-700" disabled={isSubmitting} aria-label={`Usuń osobę ${person}`}>
-                  &times;
-                </button>
-              </span>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Dla kogo (osoby)</label>
+        {isLoadingPersons && <p className="text-sm text-slate-500">Ładowanie osób...</p>}
+        {!isLoadingPersons && allPersons.length === 0 && <p className="text-sm text-slate-500">Brak zdefiniowanych osób. Dodaj osoby w Ustawieniach.</p>}
+        {!isLoadingPersons && allPersons.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 border rounded-md max-h-40 overflow-y-auto">
+            {allPersons.map(person => (
+              <label key={person.id} className="flex items-center space-x-2 p-1 hover:bg-slate-50 rounded cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedPersonIds.includes(person.id)}
+                  onChange={() => handlePersonToggle(person.id)}
+                  className="h-4 w-4 text-sky-600 border-slate-300 rounded focus:ring-sky-500"
+                  disabled={isSubmitting}
+                />
+                <span className="text-sm text-slate-700">{person.name}</span>
+              </label>
             ))}
           </div>
         )}
       </div>
-
+      
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">Tagi</label>
         <div className="flex items-center space-x-2 mb-2">
