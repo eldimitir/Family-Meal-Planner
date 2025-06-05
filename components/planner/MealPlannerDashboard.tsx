@@ -1,24 +1,37 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
-import { DayOfWeek, PlannedMeal, WeeklyCalorieTableSummary, PersonDailyCalorieSummary, WeeklyMealTypeCalorieSummary, MealTypeDailyCalorieSummary } from '../../types';
+import { DayOfWeek, PlannedMeal, WeeklyCalorieTableSummary, PersonDailyCalorieSummary, WeeklyMealTypeCalorieSummary, MealTypeDailyCalorieSummary, ArchivedPlan } from '../../types';
 import DayColumn from './DayColumn';
 import AddMealModal from './AddMealModal';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { DAYS_OF_WEEK, MEAL_TYPES } from '../../constants';
-import { PrintIcon, TrashIcon, EyeIcon, PlusIcon } from '../../constants.tsx'; // Added PlusIcon for archive
+import { PrintIcon, TrashIcon, EyeIcon, PlusIcon, ArrowDownTrayIcon, ArrowPathIcon } from '../../constants.tsx'; 
 
 const MealPlannerDashboard: React.FC = () => {
-  const { weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, archiveCurrentPlan, isLoadingArchivedPlans } = useData();
+  const { 
+    weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, 
+    archiveCurrentPlan, isLoadingArchivedPlans: isLoadingArchiveAction, // Renamed to avoid conflict
+    archivedPlans, restorePlan, refreshArchivedPlans, 
+    isLoadingArchivedPlans: isLoadingArchivedPlansList, // For list loading
+    errorArchivedPlans 
+  } = useData();
+  
   const [isAddMealModalOpen, setIsAddMealModalOpen] = useState(false);
   const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
   const [archiveName, setArchiveName] = useState('');
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | null>(null);
   const [mealToEdit, setMealToEdit] = useState<PlannedMeal | undefined>(undefined);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    refreshArchivedPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Fetch archived plans when dashboard mounts
 
   const handleAddMeal = (day: DayOfWeek) => {
     setSelectedDay(day);
@@ -53,6 +66,11 @@ const MealPlannerDashboard: React.FC = () => {
     setArchiveName(`Plan - ${today}`);
     setIsArchiveModalOpen(true);
   };
+  
+  const handleOpenRestoreModal = () => {
+    refreshArchivedPlans(); // Refresh before opening, in case of recent changes
+    setIsRestoreModalOpen(true);
+  };
 
   const handleArchivePlan = async () => {
     if (!archiveName.trim()) {
@@ -66,6 +84,13 @@ const MealPlannerDashboard: React.FC = () => {
       setArchiveName('');
     } else {
       alert("Nie udało się zarchiwizować planu.");
+    }
+  };
+
+  const handleRestoreArchivedPlan = async (planId: string, planName: string) => {
+    if (window.confirm(`Czy na pewno chcesz przywrócić plan "${planName}"? Obecny plan tygodniowy zostanie wyczyszczony i nadpisany.`)) {
+      await restorePlan(planId);
+      setIsRestoreModalOpen(false); 
     }
   };
 
@@ -182,7 +207,10 @@ const MealPlannerDashboard: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-bold text-slate-800">Planer Posiłków</h1>
         <div className="flex gap-2 flex-wrap">
-            <Button onClick={handleOpenArchiveModal} variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} disabled={isPlanEmpty || isLoadingArchivedPlans}>
+            <Button onClick={handleOpenRestoreModal} variant="secondary" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} disabled={isLoadingArchivedPlansList}>
+                Przywróć z Archiwum
+            </Button>
+            <Button onClick={handleOpenArchiveModal} variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} disabled={isPlanEmpty || isLoadingArchiveAction}>
                 Archiwizuj Plan
             </Button>
             <Button onClick={handleClearPlan} variant="danger" size="sm" leftIcon={<TrashIcon />} disabled={isPlanEmpty}>
@@ -226,7 +254,50 @@ const MealPlannerDashboard: React.FC = () => {
           />
           <div className="flex justify-end space-x-2">
             <Button variant="secondary" onClick={() => setIsArchiveModalOpen(false)}>Anuluj</Button>
-            <Button variant="primary" onClick={handleArchivePlan} isLoading={isLoadingArchivedPlans} disabled={!archiveName.trim()}>Zarchiwizuj</Button>
+            <Button variant="primary" onClick={handleArchivePlan} isLoading={isLoadingArchiveAction} disabled={!archiveName.trim()}>Zarchiwizuj</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isRestoreModalOpen} onClose={() => setIsRestoreModalOpen(false)} title="Przywróć Plan z Archiwum" size="lg">
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          {isLoadingArchivedPlansList && <p>Ładowanie zarchiwizowanych planów...</p>}
+          {errorArchivedPlans && <p className="text-red-500">Błąd ładowania archiwów: {errorArchivedPlans.message}</p>}
+          {!isLoadingArchivedPlansList && !errorArchivedPlans && archivedPlans.length === 0 && (
+            <p className="text-slate-500 text-center py-4">Brak zarchiwizowanych planów.</p>
+          )}
+          {!isLoadingArchivedPlansList && !errorArchivedPlans && archivedPlans.length > 0 && (
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Nazwa Archiwum</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Data Archiwizacji</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-slate-500 uppercase">Akcja</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {archivedPlans.map(plan => (
+                  <tr key={plan.id} className="hover:bg-slate-50">
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-700">{plan.name}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500">{new Date(plan.archived_at).toLocaleDateString()}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-right">
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        onClick={() => handleRestoreArchivedPlan(plan.id, plan.name)}
+                        leftIcon={<ArrowPathIcon className="w-4 h-4"/>}
+                        title={`Przywróć plan ${plan.name}`}
+                       >
+                         Przywróć
+                       </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+           <div className="flex justify-end mt-4">
+            <Button variant="secondary" onClick={() => setIsRestoreModalOpen(false)}>Zamknij</Button>
           </div>
         </div>
       </Modal>

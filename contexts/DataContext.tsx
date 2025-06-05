@@ -211,8 +211,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const categoriesToUse = currentCategories || recipeCategories;
     const personsToUse = currentPersons || persons;
     
-    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories) return;
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) return;
+    // Avoid fetching if dependent data isn't ready but is expected
+    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories && recipeCategories !== currentCategories) return;
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons && persons !== currentPersons) return;
+
 
     setIsLoadingRecipes(true);
     setErrorRecipes(null);
@@ -238,7 +240,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchPlanner = useCallback(async (currentPersons?: Person[]) => {
     const personsToUse = currentPersons || persons;
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) return;
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons && persons !== currentPersons) return;
+
 
     setIsLoadingPlanner(true);
     setErrorPlanner(null);
@@ -310,7 +313,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await fetchRecipes(localCats, localPers); 
       await fetchPlanner(localPers);            
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCategories, fetchUnits, fetchPersons, fetchArchivedPlans]);
+  }, [fetchCategories, fetchUnits, fetchPersons, fetchArchivedPlans, fetchRecipes, fetchPlanner]);
 
 
   useEffect(() => {
@@ -933,12 +936,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const refreshRecipes = () => fetchRecipes(recipeCategories, persons);
-  const refreshPlanner = () => fetchPlanner(persons);
-  const refreshCategories = () => fetchCategories().then(cats => fetchRecipes(cats, persons));
-  const refreshUnits = () => fetchUnits();
-  const refreshPersons = () => fetchPersons().then(pers => { fetchRecipes(recipeCategories, pers); fetchPlanner(pers); });
-  const refreshArchivedPlans = () => fetchArchivedPlans();
+  const refreshRecipes = useCallback(() => fetchRecipes(recipeCategories, persons), [fetchRecipes, recipeCategories, persons]);
+  const refreshPlanner = useCallback(() => fetchPlanner(persons), [fetchPlanner, persons]);
+  const refreshCategories = useCallback(async () => { const cats = await fetchCategories(); await fetchRecipes(cats, persons); }, [fetchCategories, fetchRecipes, persons]);
+  const refreshUnits = useCallback(() => fetchUnits(), [fetchUnits]);
+  const refreshPersons = useCallback(async () => { const pers = await fetchPersons(); await fetchRecipes(recipeCategories, pers); await fetchPlanner(pers); }, [fetchPersons, recipeCategories, persons, fetchRecipes, fetchPlanner]);
+  const refreshArchivedPlans = useCallback(() => fetchArchivedPlans(), [fetchArchivedPlans]);
 
   const contextValue: DataContextType = {
     recipes, recipeCategories, units, persons, weeklyPlan, archivedPlans,
