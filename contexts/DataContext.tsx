@@ -211,20 +211,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const categoriesToUse = currentCategories || recipeCategories;
     const personsToUse = currentPersons || persons;
     
-    // Avoid fetching if dependent data isn't ready but is expected
-    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories && recipeCategories !== currentCategories) return;
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons && persons !== currentPersons) return;
-
+    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories) {
+      // If currentCategories is not passed, but global recipeCategories exist,
+      // it might indicate a refresh call before categories state is fully set from an initial fetch.
+      // This might be too defensive or could be handled by ensuring `loadInitialData` sequence.
+      // For now, let's proceed if categoriesToUse has items or if it's an initial call (no currentCategories).
+    }
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) {
+      // Similar logic for persons.
+    }
 
     setIsLoadingRecipes(true);
     setErrorRecipes(null);
     try {
       const { data, error } = await supabase
         .from('recipes')
-        .select(`
-          *,
-          ingredients (*)
-        `)
+        .select('*, ingredients (*)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -240,8 +242,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchPlanner = useCallback(async (currentPersons?: Person[]) => {
     const personsToUse = currentPersons || persons;
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons && persons !== currentPersons) return;
-
+    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons ) {
+       // similar to fetchRecipes
+    }
 
     setIsLoadingPlanner(true);
     setErrorPlanner(null);
@@ -310,10 +313,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await fetchUnits();                     
       await fetchArchivedPlans();
       
+      // Pass freshly fetched localCats and localPers
       await fetchRecipes(localCats, localPers); 
       await fetchPlanner(localPers);            
+  // fetchRecipes and fetchPlanner are intentionally omitted from this dependency array.
+  // This is because loadInitialData orchestrates the initial sequence and passes data
+  // directly. Including them would cause a loop as their identities change
+  // when fetchCategories/fetchPersons update their underlying state dependencies.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCategories, fetchUnits, fetchPersons, fetchArchivedPlans, fetchRecipes, fetchPlanner]);
+  }, [fetchCategories, fetchUnits, fetchPersons, fetchArchivedPlans]);
 
 
   useEffect(() => {
