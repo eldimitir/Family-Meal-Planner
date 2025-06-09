@@ -30,7 +30,7 @@ interface DataContextType {
   isLoadingUnits: boolean;
   isLoadingPersons: boolean;
   isLoadingArchivedPlans: boolean;
-  isArchivingPlan: boolean; // New state
+  isArchivingPlan: boolean; 
 
   errorRecipes: Error | null;
   errorPlanner: Error | null;
@@ -38,7 +38,7 @@ interface DataContextType {
   errorUnits: Error | null;
   errorPersons: Error | null;
   errorArchivedPlans: Error | null;
-  errorArchivingPlan: Error | null; // New state
+  errorArchivingPlan: Error | null; 
   
   addRecipe: (recipeData: Omit<Recipe, 'id' | 'created_at' | 'ingredients' | 'recipe_internal_prefix' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }) => Promise<Recipe | null>;
   updateRecipe: (recipeData: Omit<Recipe, 'created_at'| 'ingredients' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }) => Promise<Recipe | null>;
@@ -77,7 +77,7 @@ interface DataContextType {
   deleteArchivedPlan: (planId: string) => Promise<void>;
 
   exportAllData: () => Promise<FullExportData | null>;
-  importAllData: (data: FullExportData) => Promise<boolean>; // Returns true on success
+  importAllData: (data: FullExportData) => Promise<boolean>;
   loadInitialData: () => Promise<void>;
 }
 
@@ -102,7 +102,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoadingUnits, setIsLoadingUnits] = useState<boolean>(true);
   const [isLoadingPersons, setIsLoadingPersons] = useState<boolean>(true);
   const [isLoadingArchivedPlans, setIsLoadingArchivedPlans] = useState<boolean>(true);
-  const [isArchivingPlan, setIsArchivingPlan] = useState<boolean>(false); // New
+  const [isArchivingPlan, setIsArchivingPlan] = useState<boolean>(false);
 
   const [errorRecipes, setErrorRecipes] = useState<Error | null>(null);
   const [errorPlanner, setErrorPlanner] = useState<Error | null>(null);
@@ -110,7 +110,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [errorUnits, setErrorUnits] = useState<Error | null>(null);
   const [errorPersons, setErrorPersons] = useState<Error | null>(null);
   const [errorArchivedPlans, setErrorArchivedPlans] = useState<Error | null>(null);
-  const [errorArchivingPlan, setErrorArchivingPlan] = useState<Error | null>(null); // New
+  const [errorArchivingPlan, setErrorArchivingPlan] = useState<Error | null>(null);
 
   const mapRecipeData = useCallback((rawRecipes: any[], categories: RecipeCategoryDB[], allPersons: Person[]): Recipe[] => {
     return (rawRecipes || []).map(r => {
@@ -142,7 +142,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, []);
   
-  const fetchCategories = useCallback(async () => {
+  const fetchCategories = useCallback(async (forceRefresh = false): Promise<RecipeCategoryDB[]> => {
+    if (recipeCategories.length > 0 && !forceRefresh && !isLoadingCategories) {
+      return recipeCategories;
+    }
     setIsLoadingCategories(true);
     setErrorCategories(null);
     try {
@@ -161,9 +164,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoadingCategories(false);
     }
-  }, []);
+  }, [recipeCategories, isLoadingCategories]);
 
-  const fetchUnits = useCallback(async () => {
+  const fetchUnits = useCallback(async (forceRefresh = false): Promise<Unit[]> => {
+    if (units.length > 0 && !forceRefresh && !isLoadingUnits) {
+      return units;
+    }
     setIsLoadingUnits(true);
     setErrorUnits(null);
     try {
@@ -173,16 +179,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .order('name', { ascending: true });
       if (error) throw error;
       setUnits(data || []);
+      return data || [];
     } catch (e) {
       console.error("Error fetching units:", e);
       setErrorUnits(e as Error);
       setUnits([]);
+      return [];
     } finally {
       setIsLoadingUnits(false);
     }
-  }, []);
+  }, [units, isLoadingUnits]);
 
-  const fetchPersons = useCallback(async () => {
+  const fetchPersons = useCallback(async (forceRefresh = false): Promise<Person[]> => {
+    if (persons.length > 0 && !forceRefresh && !isLoadingPersons) {
+      return persons;
+    }
     setIsLoadingPersons(true);
     setErrorPersons(null);
     try {
@@ -201,7 +212,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoadingPersons(false);
     }
-  }, []);
+  }, [persons, isLoadingPersons]);
 
   const getRecipeById = useCallback((recipeId: string): Recipe | undefined => {
     return recipes.find(r => r.id === recipeId);
@@ -211,22 +222,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return persons.find(p => p.id === personId);
   }, [persons]);
 
-  const fetchRecipes = useCallback(async (currentCategories?: RecipeCategoryDB[], currentPersons?: Person[]) => {
-    const categoriesToUse = currentCategories || recipeCategories;
-    const personsToUse = currentPersons || persons;
-    
-    if (categoriesToUse.length === 0 && recipeCategories.length > 0 && !currentCategories) {
-      // If currentCategories is not passed, but global recipeCategories exist,
-      // it might indicate a refresh call before categories state is fully set from an initial fetch.
-      // This might be too defensive or could be handled by ensuring `loadInitialData` sequence.
-      // For now, let's proceed if categoriesToUse has items or if it's an initial call (no currentCategories).
+  const fetchRecipes = useCallback(async (forceRefresh = false, currentCategoriesParam?: RecipeCategoryDB[], currentPersonsParam?: Person[]) => {
+    if (recipes.length > 0 && !forceRefresh && !isLoadingRecipes) {
+      return recipes;
     }
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons) {
-      // Similar logic for persons.
-    }
-
     setIsLoadingRecipes(true);
     setErrorRecipes(null);
+    
+    const categoriesToUse = currentCategoriesParam || recipeCategories;
+    const personsToUse = currentPersonsParam || persons;
+
     try {
       const { data, error } = await supabase
         .from('recipes')
@@ -234,24 +239,27 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRecipes(mapRecipeData(data, categoriesToUse, personsToUse));
+      setRecipes(mapRecipeData(data || [], categoriesToUse, personsToUse));
+      return data || [];
     } catch (e) {
       console.error("Error fetching recipes:", e);
       setErrorRecipes(e as Error);
       setRecipes([]);
+      return [];
     } finally {
       setIsLoadingRecipes(false);
     }
-  }, [recipeCategories, persons, mapRecipeData]); 
+  }, [recipes, isLoadingRecipes, recipeCategories, persons, mapRecipeData]); 
 
-  const fetchPlanner = useCallback(async (currentPersons?: Person[]) => {
-    const personsToUse = currentPersons || persons;
-    if (personsToUse.length === 0 && persons.length > 0 && !currentPersons ) {
-       // similar to fetchRecipes
+  const fetchPlanner = useCallback(async (forceRefresh = false, currentPersonsParam?: Person[]) => {
+    const planHasItems = Object.values(weeklyPlan).some(dayMeals => dayMeals.length > 0);
+    if (planHasItems && !forceRefresh && !isLoadingPlanner) {
+      return weeklyPlan;
     }
-
     setIsLoadingPlanner(true);
     setErrorPlanner(null);
+    const personsToUse = currentPersonsParam || persons;
+
     try {
       const { data, error } = await supabase
         .from('planned_meals')
@@ -265,7 +273,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return acc;
       }, {} as WeeklyPlan); 
 
-      const mappedMeals = mapPlannedMealData(data, personsToUse);
+      const mappedMeals = mapPlannedMealData(data || [], personsToUse);
 
       mappedMeals.forEach(meal => {
         if (newWeeklyPlan[meal.day as DayOfWeek]) {
@@ -275,17 +283,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       });
       setWeeklyPlan(newWeeklyPlan);
+      return newWeeklyPlan;
 
     } catch (e) {
       console.error("Error fetching planner data:", e);
       setErrorPlanner(e as Error);
       setWeeklyPlan({...initialWeeklyPlan});
+      return ({...initialWeeklyPlan});
     } finally {
       setIsLoadingPlanner(false);
     }
-  }, [persons, mapPlannedMealData]);
+  }, [weeklyPlan, isLoadingPlanner, persons, mapPlannedMealData]);
 
-  const fetchArchivedPlans = useCallback(async () => {
+  const fetchArchivedPlans = useCallback(async (forceRefresh = false) => {
+    if (archivedPlans.length > 0 && !forceRefresh && !isLoadingArchivedPlans) {
+        return archivedPlans;
+    }
     setIsLoadingArchivedPlans(true);
     setErrorArchivedPlans(null);
     try {
@@ -295,37 +308,64 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .order('archived_at', { ascending: false });
         if (error) throw error;
         setArchivedPlans(data || []);
+        return data || [];
     } catch (e) {
         console.error("Error fetching archived plans:", e);
         setErrorArchivedPlans(e as Error);
         setArchivedPlans([]);
+        return [];
     } finally {
         setIsLoadingArchivedPlans(false);
     }
-  }, []);
+  }, [archivedPlans, isLoadingArchivedPlans]);
+
+  const refreshRecipes = useCallback(async () => {
+    // When refreshing recipes, we need the latest categories and persons for mapping
+    const currentCats = recipeCategories.length > 0 ? recipeCategories : await fetchCategories(true);
+    const currentPers = persons.length > 0 ? persons : await fetchPersons(true);
+    await fetchRecipes(true, currentCats, currentPers);
+  }, [fetchRecipes, fetchCategories, fetchPersons, recipeCategories, persons]);
+
+  const refreshPlanner = useCallback(async () => {
+    const currentPers = persons.length > 0 ? persons : await fetchPersons(true);
+    await fetchPlanner(true, currentPers);
+  }, [fetchPlanner, fetchPersons, persons]);
+
+  const refreshCategories = useCallback(async () => {
+    const refreshedCats = await fetchCategories(true);
+    // Recipes depend on categories for names/prefixes, so refresh recipes too
+    const currentPers = persons.length > 0 ? persons : await fetchPersons(true); // Ensure persons are loaded
+    await fetchRecipes(true, refreshedCats, currentPers);
+  }, [fetchCategories, fetchRecipes, fetchPersons, persons]);
+
+  const refreshUnits = useCallback(async () => { await fetchUnits(true); }, [fetchUnits]);
+
+  const refreshPersons = useCallback(async () => {
+    const refreshedPers = await fetchPersons(true);
+    // Recipes and Planner depend on persons for names, so refresh them too
+    const currentCats = recipeCategories.length > 0 ? recipeCategories : await fetchCategories(true); // Ensure cats are loaded
+    await fetchRecipes(true, currentCats, refreshedPers);
+    await fetchPlanner(true, refreshedPers);
+  }, [fetchPersons, fetchRecipes, fetchPlanner, fetchCategories, recipeCategories]);
+  
+  const refreshArchivedPlans = useCallback(async () => { await fetchArchivedPlans(true); }, [fetchArchivedPlans]);
+
 
   const loadInitialData = useCallback(async () => {
-      setIsLoadingCategories(true);
-      setIsLoadingPersons(true);
-      setIsLoadingUnits(true);
-      setIsLoadingRecipes(true);
-      setIsLoadingPlanner(true);
-      setIsLoadingArchivedPlans(true);
+      setIsLoadingCategories(true); setIsLoadingPersons(true); setIsLoadingUnits(true);
+      setIsLoadingRecipes(true); setIsLoadingPlanner(true); setIsLoadingArchivedPlans(true);
 
-      const localCats = await fetchCategories(); 
-      const localPers = await fetchPersons();   
-      await fetchUnits();                     
-      await fetchArchivedPlans();
+      const localCats = await fetchCategories(true); 
+      const localPers = await fetchPersons(true);   
+      await fetchUnits(true);                     
+      await fetchArchivedPlans(true);
       
-      // Pass freshly fetched localCats and localPers
-      await fetchRecipes(localCats, localPers); 
-      await fetchPlanner(localPers);            
-  // fetchRecipes and fetchPlanner are intentionally omitted from this dependency array.
-  // This is because loadInitialData orchestrates the initial sequence and passes data
-  // directly. Including them would cause a loop as their identities change
-  // when fetchCategories/fetchPersons update their underlying state dependencies.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchCategories, fetchUnits, fetchPersons, fetchArchivedPlans]);
+      await fetchRecipes(true, localCats, localPers); 
+      await fetchPlanner(true, localPers);       
+      
+      setIsLoadingCategories(false); setIsLoadingPersons(false); setIsLoadingUnits(false);
+      setIsLoadingRecipes(false); setIsLoadingPlanner(false); setIsLoadingArchivedPlans(false);
+  }, [fetchCategories, fetchPersons, fetchUnits, fetchArchivedPlans, fetchRecipes, fetchPlanner]);
 
 
   useEffect(() => {
@@ -380,22 +420,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (recipeError) throw recipeError;
       if (!recipeResult) throw new Error("Recipe creation failed.");
-      let newRecipe = recipeResult as any; 
+      let newRecipeFromDB = recipeResult as any; 
 
       if (recipeData.ingredients && recipeData.ingredients.length > 0) {
-        const ingredientsToInsert = recipeData.ingredients.map(ing => ({ ...ing, recipe_id: newRecipe.id }));
+        const ingredientsToInsert = recipeData.ingredients.map(ing => ({ ...ing, recipe_id: newRecipeFromDB.id }));
         const { data: insertedIngredients, error: ingredientsError } = await supabase
           .from('ingredients')
           .insert(ingredientsToInsert)
           .select();
         if (ingredientsError) throw ingredientsError;
-        newRecipe.ingredients = insertedIngredients || [];
+        newRecipeFromDB.ingredients = insertedIngredients || [];
       } else {
-         newRecipe.ingredients = [];
+         newRecipeFromDB.ingredients = [];
       }
       
-      const fullyMappedRecipe = mapRecipeData([newRecipe], recipeCategories, persons)[0];
-      setRecipes(prev => mapRecipeData([fullyMappedRecipe, ...prev.map(p => ({...p, ingredients: p.ingredients.map(i => ({...i}))}))], recipeCategories, persons).sort((a,b) => {
+      const fullyMappedRecipe = mapRecipeData([newRecipeFromDB], recipeCategories, persons)[0];
+      setRecipes(prev => mapRecipeData([newRecipeFromDB, ...prev.filter(p => p.id !== newRecipeFromDB.id)], recipeCategories, persons).sort((a,b) => {
           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
           return dateB - dateA; 
@@ -417,9 +457,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!originalRecipe) throw new Error("Original recipe not found for update.");
 
       let newInternalPrefix = recipeData.recipe_internal_prefix;
+      // Check if category changed. If so, calculate new prefix.
       if (recipeData.category_id !== originalRecipe.category_id) {
         newInternalPrefix = 1; 
-        if (recipeData.category_id) {
+        if (recipeData.category_id) { // new category is not null
             const { data: categoryRecipes, error: prefixError } = await supabase
             .from('recipes')
             .select('recipe_internal_prefix')
@@ -430,7 +471,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (categoryRecipes && categoryRecipes.length > 0) {
                 newInternalPrefix = categoryRecipes[0].recipe_internal_prefix + 1;
             }
-        } else { 
+        } else { // new category is null (uncategorized)
              const { data: uncategorizedRecipes, error: prefixError } = await supabase
               .from('recipes')
               .select('recipe_internal_prefix')
@@ -440,11 +481,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (prefixError) throw prefixError;
             if (uncategorizedRecipes && uncategorizedRecipes.length > 0) {
                 newInternalPrefix = uncategorizedRecipes[0].recipe_internal_prefix + 1;
-            } else {
+            } else { // no uncategorized recipes yet
                 newInternalPrefix = 1;
             }
         }
       }
+
 
       const recipeToUpdate = {
         title: recipeData.title,
@@ -466,7 +508,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (recipeError) throw recipeError;
       if (!updatedRecipeResult) throw new Error("Recipe update failed.");
-      let updatedRecipe = updatedRecipeResult as any;
+      let updatedRecipeFromDB = updatedRecipeResult as any;
 
       const { error: deleteError } = await supabase.from('ingredients').delete().eq('recipe_id', recipeData.id);
       if (deleteError) throw deleteError;
@@ -478,13 +520,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           .insert(ingredientsToInsert)
           .select();
         if (ingredientsError) throw ingredientsError;
-        updatedRecipe.ingredients = insertedIngredients || [];
+        updatedRecipeFromDB.ingredients = insertedIngredients || [];
       } else {
-        updatedRecipe.ingredients = [];
+        updatedRecipeFromDB.ingredients = [];
       }
       
-      const fullyMappedRecipe = mapRecipeData([updatedRecipe], recipeCategories, persons)[0];
-      setRecipes(prev => prev.map(r => r.id === fullyMappedRecipe.id ? fullyMappedRecipe : r));
+      const fullyMappedRecipe = mapRecipeData([updatedRecipeFromDB], recipeCategories, persons)[0];
+      setRecipes(prev => prev.map(r => r.id === fullyMappedRecipe.id ? fullyMappedRecipe : r).sort((a,b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return dateB - dateA; 
+        }));
       return fullyMappedRecipe;
     } catch (e) {
       console.error("Error updating recipe:", e);
@@ -501,7 +547,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.from('recipes').delete().eq('id', recipeId);
       if (error) throw error;
       setRecipes(prev => prev.filter(r => r.id !== recipeId));
-      await fetchPlanner(persons); 
+      await refreshPlanner(); // Refresh planner as deleted recipe might be in use
     } catch (e) {
       console.error("Error deleting recipe:", e);
       setErrorRecipes(e as Error);
@@ -519,7 +565,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw error; 
       }
       if (!data) throw new Error("Failed to add recipe category.");
-      await fetchCategories().then(cats => fetchRecipes(cats, persons));
+      await refreshCategories(); // This will refresh categories and then recipes
       return data as RecipeCategoryDB;
     } catch (e) { console.error("Error adding recipe category:", e); setErrorCategories(e as Error); return null; }
   };
@@ -533,29 +579,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw error; 
       }
       if (!data) throw new Error("Failed to update recipe category.");
-      await fetchCategories().then(cats => fetchRecipes(cats, persons));
+      await refreshCategories(); // This will refresh categories and then recipes
       return data as RecipeCategoryDB;
     } catch (e) { console.error("Error updating recipe category:", e); setErrorCategories(e as Error); return null; }
   };
 
   const deleteRecipeCategory = async (categoryId: string) => {
     try {
-      // This first updates recipes that use this category to set their category_id to null.
       const { error: updateRecipesError } = await supabase
         .from('recipes')
         .update({ category_id: null })
         .eq('category_id', categoryId);
-
       if (updateRecipesError) throw updateRecipesError;
 
-      // Then, delete the category itself.
       const { error: deleteCategoryError } = await supabase.from('recipe_categories').delete().eq('id', categoryId);
       if (deleteCategoryError) throw deleteCategoryError;
       
-      // Refresh local state
-      await fetchCategories().then(async (newCats) => {
-          await fetchRecipes(newCats, persons); // Recipes will be re-mapped with new category info
-      });
+      await refreshCategories(); // This will refresh categories and then recipes
     } catch (e) { console.error("Error deleting recipe category:", e); setErrorCategories(e as Error); }
   };
 
@@ -564,8 +604,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data, error } = await supabase.from('planned_meals').insert(mealData).select().single();
       if (error) throw error;
       if (!data) throw new Error("Failed to add planned meal.");
-      await fetchPlanner(persons); 
-      return mapPlannedMealData([data as any], persons)[0];
+      // No need to map, refreshPlanner will fetch and map
+      await refreshPlanner(); 
+      // Find the added meal in the updated weeklyPlan state to return (optional, depends on UI needs)
+      const dayPlan = weeklyPlan[mealData.day as DayOfWeek] || [];
+      const addedMeal = dayPlan.find(m => m.recipe_id === data.recipe_id && m.custom_meal_name === data.custom_meal_name && m.meal_type === data.meal_type); // This find is naive
+      return addedMeal || mapPlannedMealData([data as any], persons)[0]; // Fallback mapping
     } catch (e) { console.error("Error adding planned meal:", e); setErrorPlanner(e as Error); return null; }
   };
 
@@ -577,8 +621,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }).eq('id', mealData.id).select().single();
       if (error) throw error;
       if (!data) throw new Error("Failed to update planned meal.");
-      await fetchPlanner(persons);
-      return mapPlannedMealData([data as any], persons)[0];
+      await refreshPlanner();
+      // Find and return updated meal from state (optional)
+      const dayPlan = weeklyPlan[mealData.day as DayOfWeek] || [];
+      const updatedMeal = dayPlan.find(m => m.id === data.id);
+      return updatedMeal || mapPlannedMealData([data as any], persons)[0];
     } catch (e) { console.error("Error updating planned meal:", e); setErrorPlanner(e as Error); return null; }
   };
 
@@ -586,7 +633,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const { error } = await supabase.from('planned_meals').delete().eq('id', plannedMealId);
       if (error) throw error;
-      await fetchPlanner(persons);
+      await refreshPlanner();
     } catch (e) { console.error("Error deleting planned meal:", e); setErrorPlanner(e as Error); }
   };
 
@@ -606,15 +653,16 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw error;
       }
       if (!data) throw new Error("Failed to add unit.");
-      await fetchUnits();
+      setUnits(prev => [...prev, data as Unit].sort((a,b) => a.name.localeCompare(b.name)));
       return data as Unit;
     } catch(e) { console.error("Error adding unit:", e); setErrorUnits(e as Error); return null; }
   };
+
   const deleteUnit = async (unitId: string) => {
     try {
         const { error } = await supabase.from('units').delete().eq('id', unitId);
         if (error) throw error;
-        await fetchUnits();
+        setUnits(prev => prev.filter(u => u.id !== unitId));
     } catch (e) { console.error("Error deleting unit:", e); setErrorUnits(e as Error); }
   };
 
@@ -626,7 +674,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw error; 
       }
       if (!data) throw new Error("Failed to add person.");
-      await fetchPersons().then(pers => { fetchRecipes(recipeCategories, pers); fetchPlanner(pers); });
+      await refreshPersons(); // Refresh persons and dependent data (recipes, planner)
       return data as Person;
     } catch (e) { console.error("Error adding person:", e); setErrorPersons(e as Error); return null; }
   };
@@ -639,21 +687,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         throw error;
       }
       if (!data) throw new Error("Failed to update person.");
-      await fetchPersons().then(pers => { fetchRecipes(recipeCategories, pers); fetchPlanner(pers); });
+      await refreshPersons();
       return data as Person;
     } catch (e) { console.error("Error updating person:", e); setErrorPersons(e as Error); return null; }
   };
 
   const deletePerson = async (personIdToDelete: string) => {
     try {
-        const { data: affectedRecipes, error: fetchRecipesError } = await supabase
+        const { data: affectedRecipesDB, error: fetchRecipesError } = await supabase
             .from('recipes')
             .select('id, person_ids')
             .filter('person_ids', 'cs', `{${personIdToDelete}}`); 
 
         if (fetchRecipesError) throw fetchRecipesError;
 
-        for (const recipe of affectedRecipes || []) {
+        for (const recipe of affectedRecipesDB || []) {
             const updatedPersonIds = (recipe.person_ids || []).filter((id: string) => id !== personIdToDelete);
             const { error: updateRecipeError } = await supabase
                 .from('recipes')
@@ -662,14 +710,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             if (updateRecipeError) throw updateRecipeError;
         }
 
-        const { data: affectedPlannedMeals, error: fetchPlannedMealsError } = await supabase
+        const { data: affectedPlannedMealsDB, error: fetchPlannedMealsError } = await supabase
             .from('planned_meals')
             .select('id, person_ids')
             .filter('person_ids', 'cs', `{${personIdToDelete}}`);
 
         if (fetchPlannedMealsError) throw fetchPlannedMealsError;
         
-        for (const meal of affectedPlannedMeals || []) {
+        for (const meal of affectedPlannedMealsDB || []) {
             const updatedPersonIds = (meal.person_ids || []).filter((id: string) => id !== personIdToDelete);
             const { error: updateMealError } = await supabase
                 .from('planned_meals')
@@ -681,10 +729,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const { error: deletePersonError } = await supabase.from('persons').delete().eq('id', personIdToDelete);
         if (deletePersonError) throw deletePersonError;
 
-        await fetchPersons().then(async (newPersons) => {
-            await fetchRecipes(recipeCategories, newPersons); 
-            await fetchPlanner(newPersons);
-        });
+        await refreshPersons();
 
     } catch (e) {
         console.error("Error deleting person and updating relations:", e);
@@ -711,7 +756,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .single();
         if (error) throw error;
         if (!data) throw new Error("Failed to archive plan.");
-        await fetchArchivedPlans(); // Refresh the list of archived plans
+        await refreshArchivedPlans(); 
         return data as ArchivedPlan;
     } catch (e) {
         console.error("Error archiving plan:", e);
@@ -723,13 +768,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const restorePlan = async (planId: string) => {
-      setIsLoadingPlanner(true);
+      setIsLoadingPlanner(true); // Keep local loading state for this specific complex operation
       setErrorPlanner(null);
       try {
           const planToRestore = archivedPlans.find(p => p.id === planId);
           if (!planToRestore) throw new Error("Archived plan not found.");
 
-          await clearWeeklyPlan(); 
+          await clearWeeklyPlan(); // Clears DB and local state `weeklyPlan`
 
           const mealsToInsert: Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names'>[] = [];
 
@@ -739,7 +784,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   dayMealsFromArchive.forEach(archivedMeal => {
                       let validRecipeId = archivedMeal.recipe_id;
                       if (validRecipeId && !getRecipeById(validRecipeId)) {
-                          console.warn(`Recipe ID ${validRecipeId} from archived plan not found. Meal "${archivedMeal.custom_meal_name || 'archived recipe'}" will be unlinked.`);
                           validRecipeId = null;
                       }
                       
@@ -753,7 +797,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                           day: day,
                           meal_type: archivedMeal.meal_type,
                           recipe_id: validRecipeId,
-                          custom_meal_name: validRecipeId ? undefined : (archivedMeal.custom_meal_name || (getRecipeById(archivedMeal.recipe_id || '')?.title ? `Custom: ${getRecipeById(archivedMeal.recipe_id || '')?.title}` : "Archived Custom Meal")),
+                          custom_meal_name: validRecipeId ? undefined : (archivedMeal.custom_meal_name || "Archived Custom Meal"),
                           person_ids: validPersonIds,
                       };
                       mealsToInsert.push(mealForDb);
@@ -768,7 +812,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               if (insertError) throw insertError;
           }
 
-          await fetchPlanner(persons); 
+          await refreshPlanner(); 
           alert("Plan został pomyślnie przywrócony.");
 
       } catch (e) {
@@ -786,14 +830,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .from('archived_plans')
             .delete()
             .eq('id', planId);
-        if (error) throw error; // Let it propagate or handle with an alert
-        await fetchArchivedPlans(); // This will refresh the list and handle its loading states
+        if (error) throw error;
+        setArchivedPlans(prev => prev.filter(p => p.id !== planId));
         alert("Zarchiwizowany plan został usunięty.");
     } catch (e) {
         console.error("Error deleting archived plan:", e);
         alert(`Nie udało się usunąć zarchiwizowanego planu: ${e instanceof Error ? e.message : String(e)}`);
-        // Optionally, refresh the list again in case of failure to ensure UI consistency
-        // await fetchArchivedPlans(); 
     }
   };
 
@@ -808,64 +850,48 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [recipes]);
 
   const exportAllData = async (): Promise<FullExportData | null> => {
-    setIsLoadingCategories(true); setIsLoadingUnits(true); setIsLoadingPersons(true);
-    setIsLoadingRecipes(true); setIsLoadingPlanner(true); setIsLoadingArchivedPlans(true);
+    // Use existing state data for export if available and not forced refresh
+    // This assumes data in state is what user wants to export
     try {
-      const { data: catsData, error: catsError } = await supabase.from('recipe_categories').select('*');
-      if (catsError) throw new Error(`Eksport kategorii: ${catsError.message}`);
+      const catsToExport = recipeCategories.length > 0 ? recipeCategories : await fetchCategories(true);
+      const unitsToExport = units.length > 0 ? units : await fetchUnits(true);
+      const personsToExport = persons.length > 0 ? persons : await fetchPersons(true);
+      const recipesFromDB = recipes.length > 0 ? recipes : await fetchRecipes(true, catsToExport, personsToExport); // Pass fresh cats/persons
       
-      const { data: unitsData, error: unitsError } = await supabase.from('units').select('*');
-      if (unitsError) throw new Error(`Eksport jednostek: ${unitsError.message}`);
-
-      const { data: personsData, error: personsError } = await supabase.from('persons').select('*');
-      if (personsError) throw new Error(`Eksport osób: ${personsError.message}`);
-      
-      const { data: recsRaw, error: recsError } = await supabase.from('recipes').select('*, ingredients(*)');
-      if (recsError) throw new Error(`Eksport przepisów: ${recsError.message}`);
-
-      const { data: plansRaw, error: plansError } = await supabase.from('planned_meals').select('*');
-      if (plansError) throw new Error(`Eksport planów: ${plansError.message}`);
-
-      const { data: archPlansRaw, error: archError } = await supabase.from('archived_plans').select('*');
-      if (archError) throw new Error(`Eksport archiwów: ${archError.message}`);
-
-
-      const recipesForExport: RecipeForExport[] = (recsRaw || []).map(r => {
-        const { category_name, category_code_prefix, persons_names, ingredients, ...restOfRecipe } = r;
-        return {
-          ...restOfRecipe,
-          db_ingredients: ingredients?.map((ing: any) => {
-            const { id, recipe_id, ...restOfIng } = ing;
-            return restOfIng;
-          }) || []
-        };
-      });
-
-      const plannedMealsForExport: PlannedMealForExport[] = (plansRaw || []).map(pm => {
+      const currentPlanMeals: PlannedMealForExport[] = [];
+      Object.values(weeklyPlan).flat().forEach(pm => {
         const { id, created_at, persons_names, ...restOfPm } = pm;
-        return restOfPm;
+        currentPlanMeals.push(restOfPm);
       });
+
+      const archivedToExport = archivedPlans.length > 0 ? archivedPlans : await fetchArchivedPlans(true);
       
-      const archivedPlansForExport: ArchivedPlanForExport[] = (archPlansRaw || []).map(ap => {
+      const recipesForExport: RecipeForExport[] = recipesFromDB.map(r => {
+        const { category_name, category_code_prefix, persons_names, ingredients, ...restOfRecipe } = r;
+        const db_ingredients: RecipeDbIngredient[] = ingredients?.map((ing: any) => {
+            const { id, recipe_id, ...restOfIng } = ing; // remove id and recipe_id from each ingredient
+            return restOfIng;
+          }) || [];
+        return { ...restOfRecipe, db_ingredients };
+      });
+
+      const archivedPlansForExport: ArchivedPlanForExport[] = archivedToExport.map(ap => {
         const { id, archived_at, ...restOfAp } = ap;
         return restOfAp as ArchivedPlanForExport;
       });
 
       return {
-        recipeCategories: catsData || [],
-        units: unitsData || [],
-        persons: personsData || [],
+        recipeCategories: catsToExport,
+        units: unitsToExport,
+        persons: personsToExport,
         recipes: recipesForExport,
-        plannedMeals: plannedMealsForExport,
+        plannedMeals: currentPlanMeals,
         archivedPlans: archivedPlansForExport,
       };
     } catch (e) {
       console.error("Error exporting data:", e);
       alert(`Błąd podczas eksportu danych: ${e instanceof Error ? e.message : String(e)}`);
       return null;
-    } finally {
-      setIsLoadingCategories(false); setIsLoadingUnits(false); setIsLoadingPersons(false);
-      setIsLoadingRecipes(false); setIsLoadingPlanner(false); setIsLoadingArchivedPlans(false);
     }
   };
 
@@ -873,9 +899,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!window.confirm("Jesteś pewien, że chcesz zaimportować dane? WSZYSTKIE obecne dane (przepisy, plany, kategorie, osoby, jednostki, zarchiwizowane plany) zostaną USUNIĘTE i zastąpione danymi z pliku. Tej operacji NIE MOŻNA COFNĄĆ.")) {
       return false;
     }
-
-    setIsLoadingCategories(true); setIsLoadingUnits(true); setIsLoadingPersons(true);
-    setIsLoadingRecipes(true); setIsLoadingPlanner(true); setIsLoadingArchivedPlans(true);
+    
+    const tempLoadingStateSetter = (loading: boolean) => {
+        setIsLoadingCategories(loading); setIsLoadingUnits(loading); setIsLoadingPersons(loading);
+        setIsLoadingRecipes(loading); setIsLoadingPlanner(loading); setIsLoadingArchivedPlans(loading);
+    };
+    tempLoadingStateSetter(true);
     
     try {
       await supabase.from('ingredients').delete().neq('id', crypto.randomUUID());
@@ -930,27 +959,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (error) throw new Error(`Błąd importu zarchiwizowanych planów: ${error.message}`);
       }
 
-      await loadInitialData();
+      await loadInitialData(); // This will force refresh all data from DB
       alert("Dane zostały pomyślnie zaimportowane.");
       return true;
 
     } catch (e) {
       console.error("Error importing data:", e);
       alert(`Krytyczny błąd podczas importu danych: ${e instanceof Error ? e.message : String(e)}. Proces importu przerwany. Spróbuj odświeżyć aplikację.`);
-      await loadInitialData(); 
+      await loadInitialData(); // Attempt to reload current DB state on failure
       return false;
     } finally {
-      setIsLoadingCategories(false); setIsLoadingUnits(false); setIsLoadingPersons(false);
-      setIsLoadingRecipes(false); setIsLoadingPlanner(false); setIsLoadingArchivedPlans(false);
+      tempLoadingStateSetter(false);
     }
   };
 
-  const refreshRecipes = useCallback(() => fetchRecipes(recipeCategories, persons), [fetchRecipes, recipeCategories, persons]);
-  const refreshPlanner = useCallback(() => fetchPlanner(persons), [fetchPlanner, persons]);
-  const refreshCategories = useCallback(async () => { const cats = await fetchCategories(); await fetchRecipes(cats, persons); }, [fetchCategories, fetchRecipes, persons]);
-  const refreshUnits = useCallback(() => fetchUnits(), [fetchUnits]);
-  const refreshPersons = useCallback(async () => { const pers = await fetchPersons(); await fetchRecipes(recipeCategories, pers); await fetchPlanner(pers); }, [fetchPersons, recipeCategories, persons, fetchRecipes, fetchPlanner]);
-  const refreshArchivedPlans = useCallback(() => fetchArchivedPlans(), [fetchArchivedPlans]);
 
   const contextValue: DataContextType = {
     recipes, recipeCategories, units, persons, weeklyPlan, archivedPlans,
