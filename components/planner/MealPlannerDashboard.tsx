@@ -14,7 +14,7 @@ import { PrintIcon, TrashIcon, EyeIcon, PlusIcon, ArrowDownTrayIcon, ArrowPathIc
 const MealPlannerDashboard: React.FC = () => {
   const { 
     weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, 
-    archiveCurrentPlan, isArchivingPlan, // Use specific isArchivingPlan
+    archiveCurrentPlan, isArchivingPlan, 
     archivedPlans, restorePlan, refreshArchivedPlans, 
     isLoadingArchivedPlans: isLoadingArchivedPlansList, 
     errorArchivedPlans 
@@ -27,8 +27,6 @@ const MealPlannerDashboard: React.FC = () => {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | null>(null);
   const [mealToEdit, setMealToEdit] = useState<PlannedMeal | undefined>(undefined);
   const navigate = useNavigate();
-
-  // Removed useEffect for refreshArchivedPlans - data is loaded by loadInitialData in DataContext
 
   const handleAddMeal = (day: DayOfWeek) => {
     setSelectedDay(day);
@@ -65,7 +63,7 @@ const MealPlannerDashboard: React.FC = () => {
   };
   
   const handleOpenRestoreModal = () => {
-    refreshArchivedPlans(); 
+    // refreshArchivedPlans(); // This call was causing the issue by triggering global loading state
     setIsRestoreModalOpen(true);
   };
 
