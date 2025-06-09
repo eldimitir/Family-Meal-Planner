@@ -30,6 +30,7 @@ interface DataContextType {
   isLoadingUnits: boolean;
   isLoadingPersons: boolean;
   isLoadingArchivedPlans: boolean;
+  isArchivingPlan: boolean; // New state
 
   errorRecipes: Error | null;
   errorPlanner: Error | null;
@@ -37,6 +38,7 @@ interface DataContextType {
   errorUnits: Error | null;
   errorPersons: Error | null;
   errorArchivedPlans: Error | null;
+  errorArchivingPlan: Error | null; // New state
   
   addRecipe: (recipeData: Omit<Recipe, 'id' | 'created_at' | 'ingredients' | 'recipe_internal_prefix' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }) => Promise<Recipe | null>;
   updateRecipe: (recipeData: Omit<Recipe, 'created_at'| 'ingredients' | 'category_name' | 'category_code_prefix' | 'persons_names'> & { ingredients: Omit<Ingredient, 'id' | 'recipe_id'>[] }) => Promise<Recipe | null>;
@@ -100,6 +102,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoadingUnits, setIsLoadingUnits] = useState<boolean>(true);
   const [isLoadingPersons, setIsLoadingPersons] = useState<boolean>(true);
   const [isLoadingArchivedPlans, setIsLoadingArchivedPlans] = useState<boolean>(true);
+  const [isArchivingPlan, setIsArchivingPlan] = useState<boolean>(false); // New
 
   const [errorRecipes, setErrorRecipes] = useState<Error | null>(null);
   const [errorPlanner, setErrorPlanner] = useState<Error | null>(null);
@@ -107,6 +110,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [errorUnits, setErrorUnits] = useState<Error | null>(null);
   const [errorPersons, setErrorPersons] = useState<Error | null>(null);
   const [errorArchivedPlans, setErrorArchivedPlans] = useState<Error | null>(null);
+  const [errorArchivingPlan, setErrorArchivingPlan] = useState<Error | null>(null); // New
 
   const mapRecipeData = useCallback((rawRecipes: any[], categories: RecipeCategoryDB[], allPersons: Person[]): Recipe[] => {
     return (rawRecipes || []).map(r => {
@@ -689,8 +693,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const archiveCurrentPlan = async (name: string): Promise<ArchivedPlan | null> => {
-    setIsLoadingArchivedPlans(true);
-    setErrorArchivedPlans(null);
+    setIsArchivingPlan(true);
+    setErrorArchivingPlan(null);
     try {
         const planToArchive: Record<DayOfWeek, ArchivedMealData[]> = {} as Record<DayOfWeek, ArchivedMealData[]>;
         for (const day of DAYS_OF_WEEK) {
@@ -707,14 +711,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .single();
         if (error) throw error;
         if (!data) throw new Error("Failed to archive plan.");
-        await fetchArchivedPlans();
+        await fetchArchivedPlans(); // Refresh the list of archived plans
         return data as ArchivedPlan;
     } catch (e) {
         console.error("Error archiving plan:", e);
-        setErrorArchivedPlans(e as Error);
+        setErrorArchivingPlan(e as Error);
         return null;
     } finally {
-        setIsLoadingArchivedPlans(false);
+        setIsArchivingPlan(false);
     }
   };
 
@@ -777,22 +781,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteArchivedPlan = async (planId: string) => {
-    setIsLoadingArchivedPlans(true);
-    setErrorArchivedPlans(null);
     try {
         const { error } = await supabase
             .from('archived_plans')
             .delete()
             .eq('id', planId);
-        if (error) throw error;
-        await fetchArchivedPlans();
+        if (error) throw error; // Let it propagate or handle with an alert
+        await fetchArchivedPlans(); // This will refresh the list and handle its loading states
         alert("Zarchiwizowany plan został usunięty.");
     } catch (e) {
         console.error("Error deleting archived plan:", e);
-        setErrorArchivedPlans(e as Error);
-        alert("Nie udało się usunąć zarchiwizowanego planu.");
-    } finally {
-        setIsLoadingArchivedPlans(false);
+        alert(`Nie udało się usunąć zarchiwizowanego planu: ${e instanceof Error ? e.message : String(e)}`);
+        // Optionally, refresh the list again in case of failure to ensure UI consistency
+        // await fetchArchivedPlans(); 
     }
   };
 
@@ -953,8 +954,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const contextValue: DataContextType = {
     recipes, recipeCategories, units, persons, weeklyPlan, archivedPlans,
-    isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, isLoadingPersons, isLoadingArchivedPlans,
-    errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons, errorArchivedPlans,
+    isLoadingRecipes, isLoadingPlanner, isLoadingCategories, isLoadingUnits, isLoadingPersons, isLoadingArchivedPlans, isArchivingPlan,
+    errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons, errorArchivedPlans, errorArchivingPlan,
     addRecipe, updateRecipe, deleteRecipe, getRecipeById,
     getCategoryById, addRecipeCategory, updateRecipeCategory, deleteRecipeCategory,
     addPlannedMeal, updatePlannedMeal, deletePlannedMeal, clearWeeklyPlan,

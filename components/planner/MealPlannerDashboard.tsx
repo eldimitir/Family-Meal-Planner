@@ -14,7 +14,7 @@ import { PrintIcon, TrashIcon, EyeIcon, PlusIcon, ArrowDownTrayIcon, ArrowPathIc
 const MealPlannerDashboard: React.FC = () => {
   const { 
     weeklyPlan, clearWeeklyPlan, getRecipeById, recipes: allRecipes, persons: allSystemPersons, 
-    archiveCurrentPlan, isLoadingArchivedPlans: isLoadingArchiveAction, 
+    archiveCurrentPlan, isArchivingPlan, // Use specific isArchivingPlan
     archivedPlans, restorePlan, refreshArchivedPlans, 
     isLoadingArchivedPlans: isLoadingArchivedPlansList, 
     errorArchivedPlans 
@@ -204,10 +204,10 @@ const MealPlannerDashboard: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl font-bold text-slate-800">Planer Posiłków</h1>
         <div className="flex gap-2 flex-wrap">
-            <Button onClick={handleOpenRestoreModal} variant="secondary" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} disabled={isLoadingArchivedPlansList}>
+            <Button onClick={handleOpenRestoreModal} variant="secondary" size="sm" leftIcon={<ArrowDownTrayIcon className="w-4 h-4" />} >
                 Przywróć z Archiwum
             </Button>
-            <Button onClick={handleOpenArchiveModal} variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} disabled={isPlanEmpty || isLoadingArchiveAction}>
+            <Button onClick={handleOpenArchiveModal} variant="secondary" size="sm" leftIcon={<PlusIcon className="w-4 h-4" />} disabled={isPlanEmpty || isArchivingPlan} isLoading={isArchivingPlan}>
                 Archiwizuj Plan
             </Button>
             <Button onClick={handleClearPlan} variant="danger" size="sm" leftIcon={<TrashIcon />} disabled={isPlanEmpty}>
@@ -251,7 +251,7 @@ const MealPlannerDashboard: React.FC = () => {
           />
           <div className="flex justify-end space-x-2">
             <Button variant="secondary" onClick={() => setIsArchiveModalOpen(false)}>Anuluj</Button>
-            <Button variant="primary" onClick={handleArchivePlan} isLoading={isLoadingArchiveAction} disabled={!archiveName.trim()}>Zarchiwizuj</Button>
+            <Button variant="primary" onClick={handleArchivePlan} isLoading={isArchivingPlan} disabled={!archiveName.trim() || isArchivingPlan}>Zarchiwizuj</Button>
           </div>
         </div>
       </Modal>
