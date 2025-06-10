@@ -18,9 +18,8 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
   const copyMenuRef = useRef<HTMLDivElement>(null);
 
   const handleDelete = () => {
-    if (window.confirm(`Czy na pewno chcesz usunąć ten posiłek?`)) {
-      deletePlannedMeal(meal.id);
-    }
+    // Removed window.confirm for direct deletion
+    deletePlannedMeal(meal.id);
   };
 
   const handleCopyMeal = (targetDays: DayOfWeek[] | 'all') => {
@@ -28,12 +27,14 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
     
     let daysToCopyTo: DayOfWeek[];
     if (targetDays === 'all') {
-      daysToCopyTo = DAYS_OF_WEEK;
+      daysToCopyTo = DAYS_OF_WEEK.filter(d => d !== meal.day); // Exclude source day
     } else {
-      daysToCopyTo = targetDays;
+      daysToCopyTo = targetDays; // Already filtered if single day from dropdown
     }
     
-    copyPlannedMeals(originalMealCoreData, daysToCopyTo);
+    if (daysToCopyTo.length > 0) { // Ensure there are days to copy to
+        copyPlannedMeals(originalMealCoreData, daysToCopyTo);
+    }
     setIsCopyMenuOpen(false);
   };
 
@@ -55,6 +56,8 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
     };
   }, [isCopyMenuOpen]);
 
+  const availableDaysForCopy = DAYS_OF_WEEK.filter(d => d !== meal.day);
+
 
   return (
     <div className="bg-white p-3 rounded-lg shadow hover:shadow-md transition-shadow border border-slate-200 relative">
@@ -75,6 +78,7 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
             className="p-1" 
             aria-label="Kopiuj posiłek"
             title="Kopiuj posiłek do..."
+            disabled={availableDaysForCopy.length === 0} // Disable if no other days to copy to
         >
             <ClipboardDocumentListIcon className="w-4 h-4" />
         </Button>
@@ -86,7 +90,7 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
         </Button>
       </div>
 
-      {isCopyMenuOpen && (
+      {isCopyMenuOpen && availableDaysForCopy.length > 0 && (
         <div 
             ref={copyMenuRef}
             className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-md shadow-lg z-10 py-1"
@@ -94,7 +98,7 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
             aria-orientation="vertical" 
             aria-labelledby="copy-meal-button"
         >
-          {DAYS_OF_WEEK.map(day => (
+          {availableDaysForCopy.map(day => (
             <button
               key={day}
               onClick={() => handleCopyMeal([day])}
@@ -104,14 +108,18 @@ const MealCard: React.FC<MealCardProps> = ({ meal, onEdit }) => {
               Kopiuj do {day}
             </button>
           ))}
-          <div className="border-t border-slate-200 my-1"></div>
-          <button
-            onClick={() => handleCopyMeal('all')}
-            className="block w-full text-left px-3 py-1.5 text-sm font-medium text-sky-600 hover:bg-sky-50 hover:text-sky-700 transition-colors"
-            role="menuitem"
-          >
-            Kopiuj do wszystkich dni
-          </button>
+          {availableDaysForCopy.length > 0 && ( // Only show "Copy to all" if there are other days
+            <>
+              <div className="border-t border-slate-200 my-1"></div>
+              <button
+                onClick={() => handleCopyMeal('all')}
+                className="block w-full text-left px-3 py-1.5 text-sm font-medium text-sky-600 hover:bg-sky-50 hover:text-sky-700 transition-colors"
+                role="menuitem"
+              >
+                Kopiuj do wszystkich pozostałych dni
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

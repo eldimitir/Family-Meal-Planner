@@ -620,20 +620,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (error) {
             console.error("Error batch-adding copied meals:", error);
             setErrorPlanner(error as Error);
-            alert(`Wystąpił błąd podczas kopiowania posiłków: ${error.message}`);
+            // alert(`Wystąpił błąd podczas kopiowania posiłków: ${error.message}`); // Removed alert
             allAddedSuccessfully = false;
         } else {
              await fetchPlanner(persons); // Refresh the entire planner view once after all copies
         }
     }
 
-
-    if (allAddedSuccessfully) {
-        alert(`Posiłki zostały pomyślnie skopiowane do ${targetDays.length > 1 ? 'wybranych dni' : targetDays[0]}.`);
-    } else {
-        // Specific error already shown, or a general one here
-        // alert("Niektóre posiłki mogły nie zostać skopiowane. Sprawdź konsolę lub spróbuj ponownie.");
-    }
+    // Removed success alert
     return allAddedSuccessfully;
   };
 
