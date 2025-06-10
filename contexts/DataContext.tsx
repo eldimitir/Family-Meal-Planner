@@ -54,6 +54,7 @@ interface DataContextType {
   updatePlannedMeal: (plannedMeal: Omit<PlannedMeal, 'created_at' | 'persons_names'>) => Promise<PlannedMeal | null>;
   deletePlannedMeal: (plannedMealId: string) => Promise<void>;
   clearWeeklyPlan: () => Promise<void>;
+  copyPlannedMeals: (originalMealCoreData: Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names' | 'day'>, targetDays: DayOfWeek[]) => Promise<boolean>;
   
   addUnit: (unitName: string) => Promise<Unit | null>;
   deleteUnit: (unitId: string) => Promise<void>;
@@ -256,7 +257,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { data, error } = await supabase
         .from('planned_meals')
         .select('*')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true }); // Keep existing sort or adjust if needed
 
       if (error) throw error;
       
@@ -271,6 +272,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (newWeeklyPlan[meal.day as DayOfWeek]) {
           newWeeklyPlan[meal.day as DayOfWeek].push(meal);
         } else {
+          // Should not happen if initialWeeklyPlan is correctly set up
+          console.warn(`Day ${meal.day} not found in newWeeklyPlan structure. Creating it.`);
           newWeeklyPlan[meal.day as DayOfWeek] = [meal];
         }
       });
@@ -283,7 +286,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoadingPlanner(false);
     }
-  }, [persons, mapPlannedMealData]);
+  }, [persons, mapPlannedMealData]); // Removed initialWeeklyPlan as it's constant
 
   const fetchArchivedPlans = useCallback(async () => {
     setIsLoadingArchivedPlans(true);
@@ -597,6 +600,43 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setWeeklyPlan({ ...initialWeeklyPlan }); 
     } catch (e) { console.error("Error clearing weekly plan:", e); setErrorPlanner(e as Error); }
   };
+
+  const copyPlannedMeals = async (
+    originalMealCoreData: Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names' | 'day'>,
+    targetDays: DayOfWeek[]
+  ): Promise<boolean> => {
+    let allAddedSuccessfully = true;
+    const mealsToAdd: Omit<PlannedMeal, 'id' | 'created_at' | 'persons_names'>[] = [];
+
+    for (const targetDay of targetDays) {
+        mealsToAdd.push({
+            ...originalMealCoreData,
+            day: targetDay,
+        });
+    }
+    
+    if (mealsToAdd.length > 0) {
+        const { error } = await supabase.from('planned_meals').insert(mealsToAdd);
+        if (error) {
+            console.error("Error batch-adding copied meals:", error);
+            setErrorPlanner(error as Error);
+            alert(`Wystąpił błąd podczas kopiowania posiłków: ${error.message}`);
+            allAddedSuccessfully = false;
+        } else {
+             await fetchPlanner(persons); // Refresh the entire planner view once after all copies
+        }
+    }
+
+
+    if (allAddedSuccessfully) {
+        alert(`Posiłki zostały pomyślnie skopiowane do ${targetDays.length > 1 ? 'wybranych dni' : targetDays[0]}.`);
+    } else {
+        // Specific error already shown, or a general one here
+        // alert("Niektóre posiłki mogły nie zostać skopiowane. Sprawdź konsolę lub spróbuj ponownie.");
+    }
+    return allAddedSuccessfully;
+  };
+
 
   const addUnit = async (unitName: string): Promise<Unit | null> => {
     try {
@@ -958,7 +998,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     errorRecipes, errorPlanner, errorCategories, errorUnits, errorPersons, errorArchivedPlans, errorArchivingPlan,
     addRecipe, updateRecipe, deleteRecipe, getRecipeById,
     getCategoryById, addRecipeCategory, updateRecipeCategory, deleteRecipeCategory,
-    addPlannedMeal, updatePlannedMeal, deletePlannedMeal, clearWeeklyPlan,
+    addPlannedMeal, updatePlannedMeal, deletePlannedMeal, clearWeeklyPlan, copyPlannedMeals,
     addUnit, deleteUnit,
     addPerson, updatePerson, deletePerson, getPersonById,
     refreshRecipes, refreshPlanner, refreshCategories, refreshUnits, refreshPersons, refreshArchivedPlans,
